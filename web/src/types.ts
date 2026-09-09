@@ -4,6 +4,13 @@ export type Quat = [number, number, number, number];
 export interface AppState {
   isCore: boolean;
   fieldKind: 'core' | 'exterior' | 'extended';
+  introActive: boolean;
+  introShot: number;
+  introProgress: number;
+  introTitle: string;
+  introCaption: string;
+  introSpeedRatio: number;
+  introScaleRatio: number;
   ship: { position: Vec3; orientation: Quat; scale: number };
   movementSpeed: number;
   pointerLocked: boolean;
@@ -41,6 +48,8 @@ export interface AppState {
 }
 
 export interface Actions {
+  startIntro(): void;
+  stopIntro(): void;
   reset(): void;
   reseed(): void;
   scrub(time: number): void;
@@ -53,6 +62,8 @@ export function initialState(): AppState {
   const isCore = fieldKind !== 'exterior';
   return {
     isCore, fieldKind,
+    introActive: false, introShot: 0, introProgress: 0, introTitle: '', introCaption: '',
+    introSpeedRatio: 1, introScaleRatio: 1,
     ship: { position: isCore ? [0, -.6, .15] : [0, -2.4, 0.6], orientation: [0.627,-0.0,0.0,0.779], scale: isCore ? .25 : 1 },
     movementSpeed: 0.5, pointerLocked: false,
     near: 2, far: 4, focus: 3, shellFade: 1, shellBokeh: 24, fov: 65, blur: 6, exposure: 0,

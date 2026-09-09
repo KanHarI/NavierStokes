@@ -13,7 +13,9 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite (normally `http://127.0.0.1:5173/`). The viewer starts paused on **Core & surroundings**. The field selector also offers the previous isolated core (`?field=core`) and heat-exterior (`?field=exterior`) checkpoints. Time advances **linearly by default**, ending at `t=0.9999`. In **Time & transport**, choose linear or logarithmic progression and adjust **Time speed** from 0.001× to 10× (decades per second in logarithmic mode). Logarithmic progression slows the approach for inspection; switching modes preserves the current time. After scrubbing, **Reset view** frames the contracted core at that time; ordinary flight and scale remain independent of the flow. Press play to run synchronized tracers, or enable **Independent dust transport** to see movement through a frozen field. Use **Click to fly**, then Escape to return to the controls.
+Open the local URL printed by Vite (normally `http://127.0.0.1:5173/`). The default arrival plays a **22-second white-light sequence**: four 5.5-second approaches to the endpoint, seen from different elevations and progressively closer scales. Each shot restarts its own explicitly labeled time window (t=0, .9, .99, or .999 through .9999), uses a linear clock, and combines a slow orbit with a gentle zoom toward the core. Field of view, focus, and ISO are choreographed to keep its contraction legible; normalized motion traces reveal depth and acceleration. Camera zoom slows near the endpoint while the physical core continues to narrow. The next shot resets dust while the view fades to black. **Explore the flow**, **Controls**, or Escape hands over immediately; **Replay sequence** starts it again. Reduced-motion users and `?intro=0` start paused. All four views use white light.
+
+The interactive viewer opens on **Core & surroundings**. The field selector also offers the previous isolated core (`?field=core`) and heat-exterior (`?field=exterior`) checkpoints. Time advances **linearly by default**, ending at `t=0.9999`. In **Time & transport**, choose linear or logarithmic progression and adjust **Time speed** from 0.001× to 10× (decades per second in logarithmic mode). Logarithmic progression slows the approach for inspection; switching modes preserves the current time. After scrubbing, **Reset view** frames the contracted core at that time; ordinary flight and scale remain independent of the flow. Press play to run synchronized tracers, or enable **Independent dust transport** to see movement through a frozen field. Use **Click to fly**, then Escape to return to the controls.
 
 ```sh
 npm run data:extended      # Regenerate the default core-and-surroundings dataset
@@ -34,6 +36,7 @@ npm run test:browser      # WebGL, controls, integrity, and light tests
 - A separate reference for the paper's isolated exterior heat-flow family.
 - A checksum-verified 1,025 × 257 streamfunction-and-swirl table for the default field, plus a 2,049-sample exterior table: about 5.34 MB raw, or 4.64 MB with gzip compression, generated in 53 seconds. Axisymmetry and similarity coordinates reconstruct space and time without a full 3D time-volume download. The older isolated core retains its 129 × 257 table.
 - GPU tracer integration and local particle recycling; local-axis spacecraft movement, roll, and multiplicative scale.
+- A four-view cinematic arrival with explanatory captions, core-width and axis-speed measurements, and immediate manual handoff.
 - Adjustable perspective, shell distances, focus, Gaussian blur, ISO, density, color, and time/dust controls.
 - Linear HDR lights and bounded multiscale redistribution of excess luminance, with a visible residual-overexposure indicator.
 
@@ -41,7 +44,7 @@ See the [core mathematical contract](docs/core-mathematics.md), [parameter limit
 
 The current renderer is a prototype: particles do not retain global identities, large changes reseed the local population, and half-float light buffers introduce measurable rounding. The browser reports excess brightness that cannot be redistributed within the bounded pass budget. Manual exposure never changes automatically. The simulation clock follows the selected rate independently of the particle work budget. The default field permits up to 4,096 geometric substeps, enough to cover its complete time interval at synchronized dust speed without a budget reseed. Exceptional transport overload can still replace moving tracers; stationary ambient dust survives. Transport through a frozen field can be limited separately.
 
-![The running WebGL core-and-surroundings preview](docs/core-preview.png)
+![White-light cinematic view of the accelerating core](docs/intro-preview.png)
 
 ## Scientific purpose
 
@@ -62,7 +65,7 @@ We will compute and explore a finite, resolved interval before the singular time
 - Optionally move dust through a frozen velocity field, or change its speed independently of simulation playback.
 - Start with white lights; optionally map speed from blue to red and distance to saturation.
 
-Only dust in the observation shell, its transition bands, and a hidden buffer is simulated. The default invisible recycling limits are 0.75× and 5.25× scale. Ordinary replacement particles are born at zero spatial opacity, in these guards (or at a faded data boundary in the older isolated checkpoints). Initial loading, explicit reseeding, and density increases fill new samples with a temporal fade. The fluid field stays consistent, but revisiting a location does not guarantee seeing the same individual tracers.
+Only dust in the observation shell, its transition bands, and a hidden buffer is simulated. The default invisible recycling limits are 0.75× and 5.25× scale. Ordinary replacement particles are born at zero spatial opacity. In the default field, incoming samples are weighted by fluid flux through the shell, relative to the translating or scaling observer; outgoing invisible guard particles are retired. Existing stationary dust stays in place. This avoids filling the reserve with particles that will never enter the view. The older isolated checkpoints retain their earlier guard sampler. Initial loading, explicit reseeding, and density increases use a temporal fade; incoming existing dust uses the continuous spatial fade. The fluid field stays consistent, but revisiting a location does not guarantee seeing the same individual tracers.
 
 ### Proposed controls
 
@@ -84,7 +87,7 @@ All optical controls will be available in a panel. Later coupling presets may co
 
 ### Light and exposure
 
-Each particle has a normalized screen-space Gaussian light profile. Distance from the spherical focus shell determines its width. Outside the near/far radii, **Boundary bokeh** adds increasing Gaussian width while opacity fades to zero over **Shell transition width**. The default transition is 1× scale. The fade has zero slope and curvature at its endpoints, avoiding a sharp cutoff. Increasing blur spreads the light without increasing its integrated brightness; reducing opacity deliberately attenuates that total light. The default field remains defined throughout space, including its stationary surroundings; only the observation shell attenuates dust. The older isolated checkpoints additionally fade at their data edges. See [the shell validation](docs/validation/shell.md).
+Each particle has a normalized screen-space Gaussian light profile. During the opening sequence, a short exposure stretches it along projected fluid velocity. Its integrated light stays constant; traces do not invent a radial burst or increase emitted energy. The straight-motion approximation is limited to 2% of remaining physical time, and footprints are bounded for rendering cost. Distance from the spherical focus shell determines its width. Outside the near/far radii, **Boundary bokeh** adds increasing Gaussian width while opacity fades to zero over **Shell transition width**. The default transition is 1× scale. The fade has zero slope and curvature at its endpoints, avoiding a sharp cutoff. Increasing blur spreads the light without increasing its integrated brightness; reducing opacity deliberately attenuates that total light. The default field remains defined throughout space, including its stationary surroundings; only the observation shell attenuates dust. The older isolated checkpoints additionally fade at their data edges. See [the shell validation](docs/validation/shell.md) and [cinematic sequence contract](docs/validation/intro.md).
 
 The FOV control is **horizontal**, initially 65°. The renderer accounts for the unequal solid angle covered by perspective pixels when converting tracer light to image brightness. This removes a camera-centered brightening of a uniform dust shell without changing particle positions or warping the perspective. Blur conserves each particle's light after that conversion. See [the projection calibration](docs/validation/projection.md).
 

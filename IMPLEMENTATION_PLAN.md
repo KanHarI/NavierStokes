@@ -10,6 +10,8 @@ The user has authorized writing these documents, creating a public GitHub reposi
 
 ### Current checkpoint
 
+A 22-second cinematic arrival now presents four linear-time approaches from different elevations and explicitly labeled time windows. The final rendering is monochrome; parallax, focus, and normalized flow-aligned motion exposure provide depth. Manual input ends the sequence immediately. This presentation does not change the represented fluid equations or complete the remaining scientific work.
+
 The default view now adds continuous surroundings to the computed core: Appendix B.22 reference continuation, a streamfunction join to the heat exterior, a matched radial pressure moment, and smooth physical localization to stationary fluid. See docs/extended-flow.md for the equations and remaining source conditions. The renderer reconstructs both meridional components from a common bicubic primitive, keeps dust in stationary fluid, and removes the old shrinking data crop from this default mode. The two original isolated checkpoints remain selectable.
 
 The underlying core checkpoint reconstructs a convergent local solution of the actual coupled leading core equations (4.13/B.15), with diagnostic analytic axis pressure and finite parameters. The radial Taylor solver, independent physical residual checks, and 129 × 257 compressed-coordinate table are implemented. The preview ends at t=0.9999, occupies about 544 KB, and generates in about 23 seconds. See docs/core-mathematics.md, docs/core-parameters.md, and docs/validation/science-core.md.

@@ -111,6 +111,60 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
 .scope-note { margin-top: 12px; color: #baa993; }
 .cockpit.is-captured .control-panel { opacity: .55; }
 .cockpit.is-captured .header-actions { opacity: .4; }
+.intro-card[hidden], #replay-intro[hidden] { display: none; }
+.intro-card {
+  position: absolute; left: 50px; bottom: 48px; width: min(460px, calc(100% - 100px));
+  color: #f0f0ed; isolation: isolate;
+}
+.intro-card::before {
+  content: ''; position: absolute; z-index: -1; inset: -80px -100px -90px -100px;
+  background: radial-gradient(ellipse at 35% 65%, rgba(0, 0, 0, .88), rgba(0, 0, 0, .35) 43%, transparent 72%);
+  pointer-events: none;
+}
+.intro-kicker {
+  display: flex; align-items: center; gap: 13px; color: #a8aaa9;
+  font-size: 9px; line-height: 1.6; letter-spacing: 2px; text-transform: uppercase;
+}
+.intro-kicker > span:first-child { color: #5d615f; }
+#intro-shot-number { color: #dddeda; font-variant-numeric: tabular-nums; }
+.intro-title {
+  margin: 17px 0 13px; font-family: 'Iowan Old Style', 'Baskerville', 'Palatino Linotype', Georgia, serif;
+  font-size: clamp(35px, 4.2vw, 59px); line-height: 1.05; font-weight: 400;
+  letter-spacing: -1.7px; text-wrap: balance;
+}
+.intro-description { margin: 0; max-width: 390px; color: #aeb0ad; font-size: 12px; line-height: 1.6; letter-spacing: .15px; }
+.intro-measures { display: flex; flex-wrap: wrap; gap: 4px 15px; margin: 12px 0 0; color: #777d77; font-size: 10px; line-height: 1.6; }
+.intro-measures span span { margin-left: 5px; color: #c3c8bf; font-variant-numeric: tabular-nums; }
+.intro-progress { display: flex; gap: 7px; width: 192px; margin: 26px 0 24px; padding: 0; list-style: none; }
+.intro-progress li { position: relative; flex: 1; height: 2px; overflow: hidden; background: rgba(255, 255, 255, .18); }
+.intro-progress li span {
+  display: block; height: 100%; background: #deded9; transform-origin: left;
+  transform: scaleX(var(--shot-progress, 0));
+}
+.intro-actions { display: flex; align-items: center; gap: 20px; }
+.explore-button {
+  display: inline-flex; align-items: center; gap: 32px; padding: 14px 18px;
+  border: 1px solid rgba(255, 255, 255, .58); border-radius: 2px;
+  color: #f2f2ef; background: rgba(255, 255, 255, .045); backdrop-filter: blur(12px);
+  font-size: 12px; letter-spacing: .2px; transition: background .2s, border-color .2s;
+}
+.explore-button:hover { border-color: #fff; background: rgba(255, 255, 255, .14); }
+.explore-button span { font-size: 17px; line-height: .8; color: #bfc1bc; }
+.intro-hint { color: #858986; font-size: 10px; letter-spacing: .4px; }
+.is-intro { --accent: #d9ddd8; --muted: #969b96; --line: rgba(220, 224, 219, .18); }
+.is-intro .control-panel, .is-intro .help-card, .is-intro .telemetry,
+.is-intro .timeline-bar, .is-intro .reticle, .is-intro .flight-prompt,
+.is-intro #field-select, .is-intro #toggle-help { display: none; }
+.is-intro .mission-header { top: 34px; left: 50px; right: 50px; }
+.is-intro .mission-header > div { background: rgba(0, 0, 0, .42); box-shadow: 0 0 28px 14px rgba(0, 0, 0, .18); }
+.is-intro .wordmark { color: #d2d6d1; font-size: 16px; letter-spacing: -.3px; }
+.is-intro .wordmark span { color: #828883; }
+.is-intro .eyebrow { color: #959c95; font-size: 8px; }
+.is-intro .signal { background: #c1c9bd; box-shadow: none; }
+.is-intro .scope-badge { color: #a3a8a2; background: rgba(255, 255, 255, .025); border-color: rgba(220, 224, 219, .12); font-size: 9px; }
+.is-intro .quiet-button { background: rgba(0, 0, 0, .3); color: #bbc1b9; }
+.is-intro .quiet-button:hover { background: rgba(255, 255, 255, .08); border-color: #747b71; }
+.is-intro button:focus-visible { outline-color: #eceee9; }
 @media (max-width: 760px) {
   .mission-header { top: 20px; left: 20px; right: 20px; gap: 12px; }
   .wordmark { font-size: 15px; }
@@ -123,6 +177,9 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
   .timeline-bar { left: 20px; right: 20px; bottom: 20px; gap: 12px; }
   .status-readout { max-width: 110px; font-size: 9px; }
   .help-card { left: 20px; top: 118px; width: 260px; }
+  .is-intro .mission-header { top: 24px; left: 25px; right: 25px; }
+  .intro-card { left: 25px; bottom: 32px; width: calc(100% - 50px); }
+  .intro-title { max-width: 360px; }
 }
 @media (max-width: 480px) {
   .header-actions { flex-direction: column; align-items: flex-end; }
@@ -130,5 +187,18 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
   .telemetry { gap: 14px; }
   .telemetry .performance-instrument { display: none; }
   .status-readout { display: none; }
+  .intro-hint { display: none; }
+  .intro-kicker { font-size: 8px; letter-spacing: 1.5px; gap: 10px; }
+  .intro-title { margin-top: 14px; }
+  .is-intro .scope-badge { max-width: 215px; font-size: 8px; }
+  .is-intro .wordmark { font-size: 14px; }
+}
+@media (max-height: 480px) {
+  .intro-card { bottom: 22px; }
+  .intro-title { font-size: 32px; margin: 10px 0 8px; }
+  .intro-description { font-size: 10px; max-width: 400px; }
+  .intro-measures { margin-top: 6px; font-size: 9px; }
+  .intro-progress { margin: 15px 0; }
+  .explore-button { padding: 10px 14px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function load(page: Page) {
-  await page.goto('/?debug=1');
+  await page.goto('/?intro=0&debug=1');
   await page.waitForFunction(() => {
     const app = (window as any).__observatory;
     return app && !app.state.loading && app.renderer;
@@ -80,7 +80,7 @@ test('corrupt extended swirl data fails closed', async ({ page }) => {
     const response = await route.fetch(), bytes = Buffer.from(await response.body());
     bytes[0] ^= 1; await route.fulfill({ response, body: bytes });
   });
-  await page.goto('/?debug=1');
+  await page.goto('/?intro=0&debug=1');
   await expect(page.getByRole('alert')).toContainText('checksum');
   expect(await page.evaluate(() => (window as any).__observatory.renderer)).toBeUndefined();
 });
@@ -100,7 +100,7 @@ test('heat exterior orbits preserve radius and match quadrature through the comp
     for (let i = 0; i < 100; i++) {
       // The ship's shell is fixed in space; an orbit may legitimately leave
       // its guard volume and be replaced. Compare trajectories that remain.
-      if (after.particleSamples[i*4+3] === 0) continue;
+      if (after.particleSamples[i*4+3] !== 1) continue;
       retained++;
       const p = before.particleSamples.slice(i*4, i*4+3), out = after.particleSamples.slice(i*4, i*4+3);
       let angle = 0;

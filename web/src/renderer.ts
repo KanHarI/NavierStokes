@@ -1,6 +1,7 @@
 import type { AppState } from './types';
 import type { FieldData } from './field';
 import { EXTENDED_GLSL } from './extended-glsl';
+import { INFLOW_GLSL } from './inflow-glsl';
 import { SHELL_GLSL, shellBounds } from './shell';
 import { planTransport, type TransportPlan } from './transport';
 
@@ -94,6 +95,7 @@ uniform vec2 uShell;
 uniform float uDelta,uWall,uSeed,uTauStart,uTimeDelta,uGeometricDecay,uFirstWeight;
 uniform int uSteps,uReseed,uFill,uNewFrom,uSpawnAttempts;
 float random(inout uint seed){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return float(seed)/4294967295.;}
+${INFLOW_GLSL}
 vec3 spawn(inout uint seed){
   float h=2.*random(seed)-1.;float phi=6.2831853*random(seed);
   float radius=pow(mix(pow(uShell.x,3.),pow(uShell.y,3.),random(seed)),1./3.)*uScale;
@@ -137,13 +139,24 @@ void main(){
       if(!validAt(midpoint,midpointTau)){reborn=true;break;}p+=velocityAt(midpoint,midpointTau)*step;}
     float d=length(p-uShip)/uScale;
     reborn=reborn||!valid(p)||d<uShell.x||d>uShell.y;
+    // Do not let outgoing, invisible guard particles occupy the reservoir
+    // indefinitely. Replenishment samples the actual incoming boundary flux.
+    bool observerMoves=length(uObserverVelocity)+abs(uObserverScaleRate)>0.;
+    if(uCore==2&&(!stationary||observerMoves)&&(abs(uTransportRate)>0.||observerMoves)
+      &&spatialVisibility(p)<=0.&&hiddenInwardFlux(p)<=0.)reborn=true;
   }
   if(reborn){
     bool fill=uFill==1||gl_VertexID>=uNewFrom;
-    age=-1.;for(int i=0;i<uSpawnAttempts;i++){
-      p=fill?spawn(seed):spawnHidden(seed);
-      float distance=length(p-uShip)/uScale;
-      if(valid(p)&&distance>=uShell.x&&distance<=uShell.y&&(fill||spatialVisibility(p)<=0.)){age=0.;break;}
+    age=-1.;
+    if(uCore==2&&!fill){
+      // Hidden incoming dust already existed in the surrounding fluid. Its
+      // spatial shell fade provides the reveal; a second age fade would dim
+      // fast crossings. Temporal fades belong to explicit population resets.
+      if(spawnInflow(seed,p)&&valid(p)&&spatialVisibility(p)<=0.)age=10.;
+    }else for(int i=0;i<uSpawnAttempts;i++){
+        p=fill?spawn(seed):spawnHidden(seed);
+        float distance=length(p-uShip)/uScale;
+        if(valid(p)&&distance>=uShell.x&&distance<=uShell.y&&(fill||spatialVisibility(p)<=0.)){age=0.;break;}
     }
   }else{age=min(age+uWall,10.);}
   nextParticle=vec4(p,age);
@@ -156,11 +169,12 @@ layout(location=0) in vec4 aParticle;
 ${fieldGLSL}
 uniform vec4 uOrientation;
 uniform vec2 uResolution,uShell;
-uniform float uFocus,uBlur,uFov,uExposure,uBrightness,uColorMax;
+uniform float uFocus,uBlur,uFov,uExposure,uBrightness,uColorMax,uShutter;
 uniform int uColor,uSaturation;
 out vec2 vOffset;
 out vec3 vColor;
-out float vSigma,vLight;
+out vec2 vSigma;
+out float vLight;
 vec3 rotate(vec4 q,vec3 v){return v+2.*cross(q.xyz,cross(q.xyz,v)+q.w*v);}
 void main(){
   vec2 corners[6]=vec2[6](vec2(-1,-1),vec2(1,-1),vec2(-1,1),vec2(-1,1),vec2(1,-1),vec2(1,1));
@@ -169,12 +183,25 @@ void main(){
   vec3 camera=rotate(vec4(-uOrientation.xyz,uOrientation.w),rel);
   vec2 shell=shellOpticalWeights(d,uOpticalShell,uShellFade,uBoundaryBlur);
   float baseSigma=sqrt(1.1*1.1+pow(uBlur*abs(1./max(d,.001)-1./uFocus),2.));
-  float sigma=shellGaussianSigma(baseSigma,shell.y,64.);vSigma=sigma;
-  vec2 corner=corners[gl_VertexID];vOffset=corner*3.*sigma;
+  float sigma=shellGaussianSigma(baseSigma,shell.y,64.);
+  vec2 corner=corners[gl_VertexID];
   float tangent=tan(uFov*.5);
   // uFov is horizontal. Keep the same focal scale on both image axes.
   vec2 ndc=camera.xy/max(-camera.z,.0001)/vec2(tangent,tangent*uResolution.y/uResolution.x);
-  gl_Position=vec4(ndc+vOffset*2./uResolution,0.,1.);
+  // A short photographic exposure: project the actual fluid velocity into
+  // image pixels. Its second moment stretches a normalized Gaussian along
+  // the motion, preserving light instead of adding a decorative glow.
+  vec2 motion=vec2(0.);
+  if(uShutter>0.&&camera.z<-.001){
+    vec3 v=rotate(vec4(-uOrientation.xyz,uOrientation.w),velocity(aParticle.xyz)/uScale);
+    motion=(v.xy+camera.xy*v.z/(-camera.z))*(uResolution.x/(2.*tangent*(-camera.z)))*uShutter;
+  }
+  float traceLength=min(length(motion),36.);
+  vec2 direction=length(motion)>.00001?normalize(motion):vec2(1.,0.);
+  vSigma=vec2(sqrt(sigma*sigma+traceLength*traceLength/12.),sigma);
+  vOffset=corner*3.*vSigma;
+  vec2 pixelOffset=direction*vOffset.x+vec2(-direction.y,direction.x)*vOffset.y;
+  gl_Position=vec4(ndc+pixelOffset*2./uResolution,0.,1.);
   float visibility=shell.x*fieldVisibility(aParticle.xyz);
   float ageFade=smoothstep(0.,.35,aParticle.w);
   // Uniform solid angle projects to cos(theta)^3 samples per pixel area.
@@ -183,7 +210,7 @@ void main(){
   // Cull the complete footprint first: grazing, offscreen rays must not create
   // unbounded weights. The viewport plus its Gaussian guard band bounds gain.
   bool visible=camera.z<-.001&&aParticle.w>=0.&&visibility>0.
-    &&all(lessThanEqual(abs(ndc),vec2(1.)+6.*sigma/uResolution));
+    &&all(lessThanEqual(abs(ndc),vec2(1.)+6.*length(vSigma)/uResolution));
   float imageAreaWeight=visible?pow(d/max(-camera.z,.001),3.):0.;
   vLight=12.*uBrightness*exp2(uExposure)*visibility*ageFade*imageAreaWeight;
   if(!visible){vLight=0.;gl_Position=vec4(2.,2.,0.,1.);}
@@ -197,9 +224,9 @@ void main(){
 }`;
 const drawFragment = `#version 300 es
 precision highp float;
-in vec2 vOffset;in vec3 vColor;in float vSigma,vLight;out vec4 color;
-void main(){float r2=dot(vOffset,vOffset)/(vSigma*vSigma);if(r2>9.)discard;
-  float I=vLight*exp(-.5*r2)/(6.28318530718*vSigma*vSigma*(1.-exp(-4.5)));
+in vec2 vOffset;in vec3 vColor;in vec2 vSigma;in float vLight;out vec4 color;
+void main(){vec2 normalized=vOffset/vSigma;float r2=dot(normalized,normalized);if(r2>9.)discard;
+  float I=vLight*exp(-.5*r2)/(6.28318530718*vSigma.x*vSigma.y*(1.-exp(-4.5)));
   color=vec4(vColor*I,0.);
 }`;
 // Gather weights are normalized at their source, so truncated boundary kernels
@@ -260,6 +287,7 @@ export class Renderer {
   private seed = 1;
   private resetPending = true;
   private previousScale = 1;
+  private previousPosition: number[];
   private lastAnalysis = 0;
   private lightInput = 0;
   private lightOutput = 0;
@@ -269,6 +297,7 @@ export class Renderer {
   private resizeObserver: ResizeObserver;
 
   constructor(private canvas: HTMLCanvasElement, private state: AppState, readonly field: FieldData) {
+    this.previousPosition = [...state.ship.position];
     const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, preserveDrawingBuffer: false });
     if (!gl) throw new Error('WebGL 2 is unavailable. Please use a browser with hardware acceleration enabled.');
     this.gl = gl;
@@ -383,6 +412,8 @@ export class Renderer {
     this.f(p, 'uTau', m.time.singular - s.time); this.f(p, 'uScale', s.ship.scale);
   }
   reseed() { this.resetPending = true; }
+  /** One startup barrier: shader compilation must not consume the first shot. */
+  finishFrame() { this.gl.finish(); }
 
   render(wallDelta: number, transportDelta: number, timeDelta = 0): void {
     if (this.disposed) return;
@@ -395,7 +426,9 @@ export class Renderer {
     this.count = this.count === 0 ? desired : this.count + Math.max(-change, Math.min(change, desired - this.count));
     s.particleCount = this.count;
     if (s.ship.scale / this.previousScale > 1.3 || s.ship.scale / this.previousScale < .77) this.resetPending = true;
-    this.previousScale = s.ship.scale;
+    const observerVelocity = s.ship.position.map((p,i) => this.resetPending || wallDelta <= 0 ? 0 : (p-this.previousPosition[i])/wallDelta);
+    const observerScaleRate = this.resetPending || wallDelta <= 0 ? 0 : Math.log(s.ship.scale/this.previousScale)/wallDelta;
+    this.previousScale = s.ship.scale; this.previousPosition = [...s.ship.position];
     const transport = planTransport({ isCore: !!this.field.manifest.core,
       tauEnd: this.field.manifest.time.singular - s.time, timeDelta, transportDelta,
       maxSteps: this.field.swirl ? 4096 : 256 });
@@ -406,6 +439,10 @@ export class Renderer {
     gl.useProgram(this.updateProgram.program); this.common(this.updateProgram);
     gl.uniform2f(this.uniform(this.updateProgram, 'uShell'), ...bounds.guard);
     this.i(this.updateProgram, 'uNewFrom', previousCount); this.i(this.updateProgram, 'uSpawnAttempts', 24);
+    gl.uniform3fv(this.uniform(this.updateProgram, 'uObserverVelocity'), observerVelocity);
+    this.f(this.updateProgram, 'uObserverScaleRate', observerScaleRate);
+    this.f(this.updateProgram, 'uTransportRate', wallDelta > 0 ? transport.actualDelta/wallDelta : 0);
+    this.i(this.updateProgram, 'uInflowCandidates', 12);
     this.f(this.updateProgram, 'uDelta', transport.actualDelta); this.f(this.updateProgram, 'uWall', wallDelta);
     this.f(this.updateProgram, 'uTauStart', transport.tauStart); this.f(this.updateProgram, 'uTimeDelta', timeDelta);
     this.f(this.updateProgram, 'uGeometricDecay', transport.geometricDecay); this.f(this.updateProgram, 'uFirstWeight', transport.firstWeight);
@@ -427,6 +464,9 @@ export class Renderer {
     this.f(this.drawProgram, 'uFov', s.fov * Math.PI / 180); this.f(this.drawProgram, 'uExposure', s.exposure);
     this.f(this.drawProgram, 'uBrightness', s.densityCompensation ? 500 / Math.max(1, s.density) : 1);
     this.f(this.drawProgram, 'uColorMax', s.maxSpeed); this.i(this.drawProgram, 'uColor', s.colorMode === 'speed' ? 1 : 0);
+    const shutter = s.introActive && transportDelta > 0
+      ? Math.min(.02 * (this.field.manifest.time.singular-s.time), s.playbackSpeed * .035) : 0;
+    this.f(this.drawProgram, 'uShutter', shutter);
     this.i(this.drawProgram, 'uSaturation', s.distanceSaturation ? 1 : 0);
     gl.bindVertexArray(this.drawVAOs[this.index]); gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.count); gl.disable(gl.BLEND);
@@ -528,6 +568,8 @@ export class Renderer {
       const s = this.state, bounds = shellBounds({ near: s.near, far: s.far, transitionWidth: s.shellFade });
       gl.uniform2f(this.uniform(p, 'uShell'), ...bounds.guard);
       this.i(p, 'uSteps', 0); this.i(p, 'uReseed', 0); this.i(p, 'uFill', 0); this.i(p, 'uNewFrom', count); this.i(p, 'uSpawnAttempts', 24);
+      gl.uniform3f(this.uniform(p, 'uObserverVelocity'), 0, 0, 0);
+      this.f(p, 'uObserverScaleRate', 0); this.f(p, 'uTransportRate', 1); this.i(p, 'uInflowCandidates', 12);
       this.f(p, 'uWall', .016); this.f(p, 'uSeed', 43);
       gl.bindVertexArray(vao); gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.feedback);
       gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, output); gl.enable(gl.RASTERIZER_DISCARD);
@@ -540,7 +582,7 @@ export class Renderer {
       gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
       const values = new Float32Array(count * 2);
       gl.bindBuffer(gl.COPY_READ_BUFFER, measured); gl.getBufferSubData(gl.COPY_READ_BUFFER, 0, values); gl.bindBuffer(gl.COPY_READ_BUFFER, null);
-      const births = Array.from({ length: count }, (_, i) => ({ opacity: values[i * 2], age: values[i * 2 + 1] })).filter(x => x.age === 0);
+      const births = Array.from({ length: count }, (_, i) => ({ opacity: values[i * 2], age: values[i * 2 + 1] })).filter(x => x.age === 0 || x.age === 10);
       return { births: births.length, maximumBirthOpacity: Math.max(0, ...births.map(x => x.opacity)),
         finite: [...values].every(Number.isFinite), glError: gl.getError() };
     } finally {
@@ -582,7 +624,7 @@ export class Renderer {
   }
 
   /** Verify the rendered Gaussian footprint, not just its analytic formula. */
-  auditGaussian() {
+  auditGaussian(shutter = 0) {
     const gl = this.gl; const savedReductions = this.reductions;
     const target = this.target(64, 64);
     this.reductions = [32, 16, 8, 4, 2, 1].map(n => this.target(n, n, true));
@@ -601,6 +643,7 @@ export class Renderer {
         gl.uniform2f(this.uniform(p, 'uOpticalShell'), 1, 3);
         this.f(p, 'uScale', 1); this.f(p, 'uFocus', 2); this.f(p, 'uBlur', 8); this.f(p, 'uFov', 1);
         this.f(p, 'uExposure', 0); this.f(p, 'uBrightness', 1); this.i(p, 'uColor', 0);
+        this.f(p, 'uShutter', shutter);
         gl.disable(gl.BLEND); gl.bindVertexArray(vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 1);
         cases.push({ distance, light: this.measure(target)[0] });
       }
@@ -648,6 +691,7 @@ export class Renderer {
         gl.uniform2f(this.uniform(p, 'uOpticalShell'), 1, 3);
         this.f(p, 'uScale', .5); this.f(p, 'uFocus', 1); this.f(p, 'uBlur', 6);
         this.f(p, 'uFov', fov * Math.PI / 180); this.f(p, 'uExposure', -6); this.f(p, 'uBrightness', 1); this.i(p, 'uColor', 0);
+        this.f(p, 'uShutter', 0);
         gl.bindVertexArray(vao); gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, count); gl.disable(gl.BLEND);
         const pixels = new Float32Array(width * height * 4); gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, pixels);

@@ -15,6 +15,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
         <span class="scope-badge" id="model-label"></span>
       </div>
       <nav class="header-actions" aria-label="Viewer tools">
+        <button class="quiet-button" id="replay-intro">Replay sequence</button>
         <select id="field-select" aria-label="Scientific field"><option value="extended">Core & surroundings</option><option value="core">Isolated core</option><option value="exterior">Heat exterior</option></select>
         <button class="quiet-button" id="toggle-help" aria-expanded="false" aria-controls="flight-help">Flight guide</button>
         <button class="quiet-button" id="toggle-controls" aria-expanded="true" aria-controls="flight-controls">Controls</button>
@@ -46,6 +47,22 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     </aside>
     <div class="reticle" aria-hidden="true"></div>
     <div class="flight-prompt" id="flight-prompt"><button id="enter-flight">Click to fly <span aria-hidden="true">↗</span></button></div>
+    <section class="intro-card" id="intro-card" aria-label="Four views of a singularity, a repeating four-view sequence" hidden>
+      <div class="intro-kicker">Four views of a singularity <span aria-hidden="true">/</span> <span id="intro-shot-number">01</span></div>
+      <h2 class="intro-title" id="intro-title">The gathering</h2>
+      <p class="intro-description" id="intro-caption">A fluid accelerates. Space holds still.</p>
+      <p class="intro-measures"><span>Linear time <span id="intro-time">0.0000</span></span><span>Core width <span id="intro-scale-ratio">1.00×</span></span><span>Axis speed <span id="intro-speed-ratio">1.0×</span></span></p>
+      <ol class="intro-progress" aria-label="Sequence views">
+        <li aria-label="View 1"><span></span></li>
+        <li aria-label="View 2"><span></span></li>
+        <li aria-label="View 3"><span></span></li>
+        <li aria-label="View 4"><span></span></li>
+      </ol>
+      <div class="intro-actions">
+        <button id="explore-flow" class="explore-button">Explore the flow <span aria-hidden="true">↗</span></button>
+        <span class="intro-hint">Take the controls</span>
+      </div>
+    </section>
     <section class="telemetry" aria-label="Live telemetry">
       <div><div class="instrument-label">Observation scale</div><div class="instrument-number"><span id="ship-scale">1.00</span><small>×</small></div></div>
       <div><div class="instrument-label">Local tracers</div><div class="instrument-number" id="particle-count">—</div></div>
@@ -184,8 +201,15 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
   const timeline = find<HTMLInputElement>('#simulation-time');
   const play = find<HTMLButtonElement>('#toggle-play');
   const status = find('#viewer-status');
+  const introCard = find('#intro-card');
+  const introTitle = find('#intro-title');
+  const introNumber = find('#intro-shot-number');
+  const introSegments = [...root.querySelectorAll<HTMLElement>('.intro-progress li')];
+  const replayIntro = find<HTMLButtonElement>('#replay-intro');
   on(controlsToggle, 'click', () => {
-    panel.hidden = !panel.hidden;
+    const leavingIntro = root.classList.contains('is-intro');
+    if (state.introActive) actions.stopIntro();
+    panel.hidden = leavingIntro ? false : !panel.hidden;
     controlsToggle.setAttribute('aria-expanded', String(!panel.hidden));
     if (!panel.hidden && innerWidth < 760) { help.hidden = true; helpToggle.setAttribute('aria-expanded', 'false'); }
   });
@@ -195,6 +219,8 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     if (!help.hidden && innerWidth < 760) { panel.hidden = true; controlsToggle.setAttribute('aria-expanded', 'false'); }
   });
   on(find('#enter-flight'), 'click', () => actions.enterFlight());
+  on(find('#explore-flow'), 'click', () => actions.enterFlight());
+  on(replayIntro, 'click', () => actions.startIntro());
   on(find('#reset-view'), 'click', () => actions.reset());
   on(find('#reseed-dust'), 'click', () => actions.reseed());
   on(play, 'click', () => { if (hasFlow()) state.playing = !state.playing; });
@@ -206,6 +232,25 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     update() {
       for (const binding of bindings) binding.update();
       root.classList.toggle('is-captured', state.pointerLocked);
+      root.classList.toggle('is-intro', state.introActive);
+      introCard.hidden = !state.introActive;
+      replayIntro.hidden = state.introActive || !state.isCore;
+      replayIntro.disabled = !hasFlow();
+      controlsToggle.setAttribute('aria-expanded', String(!state.introActive && !panel.hidden));
+      if (state.introActive) {
+        introTitle.textContent = state.introTitle;
+        find('#intro-caption').textContent = state.introCaption;
+        find('#intro-scale-ratio').textContent = `${state.introScaleRatio.toFixed(2)}×`;
+        find('#intro-speed-ratio').textContent = `${state.introSpeedRatio.toFixed(1)}×`;
+        find('#intro-time').textContent = state.time.toFixed(4);
+        introNumber.textContent = String(state.introShot + 1).padStart(2, '0');
+        introSegments.forEach((segment, index) => {
+          const progress = index < state.introShot ? 1 : index === state.introShot ? state.introProgress : 0;
+          segment.style.setProperty('--shot-progress', String(Math.max(0, Math.min(1, progress))));
+          if (index === state.introShot) segment.setAttribute('aria-current', 'step');
+          else segment.removeAttribute('aria-current');
+        });
+      }
       prompt.classList.toggle('is-flying', state.pointerLocked);
       find('#model-label').textContent = state.modelLabel;
       find('#model-description').textContent = state.modelDescription;
