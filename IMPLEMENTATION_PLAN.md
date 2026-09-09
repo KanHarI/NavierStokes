@@ -28,7 +28,7 @@ The small generator and browser do not exhaust the final one-hour computation bu
 - Full local-axis translation and rotation, without a preferred world up direction.
 - Positive multiplicative ship scale, initially coupled to travel speed and viewing distances.
 - Finite perspective and independently adjustable field of view.
-- A spherical visibility shell with near/far defaults of 1 and 3 ship-scale units, focused at 2.
+- A spherical visibility shell with near/far defaults of 2 and 4 ship-scale units, focused at 3, with smooth transitions from 1 to 2 and 4 to 5.
 - Per-particle Gaussian defocus that conserves integrated light.
 - Excess pixel luminance redistributed as white light, with measured conservation.
 - Manual global ISO/exposure and independently adjustable dust density.
@@ -196,7 +196,7 @@ Use camera-relative positions and appropriate scaled representations on the GPU.
 
 The visibility shell is spherical, while the camera uses a perspective frustum. Implement shell visibility in radial distance; do not substitute the camera's planar near/far clipping distances. Configure geometric clipping so it does not incorrectly cut the visible part of the shell, especially at wide field of view.
 
-Expose near/far shell multiples, focus distance, blur strength, ISO, field of view, and edge-fade width. Enforce near < far and positive focus distance. Begin with near = 1, far = 3, focus = 2.
+Expose near/far shell multiples, focus distance, blur strength, ISO, field of view, and edge-fade width. Enforce near < far and positive focus distance. Use near = 2, far = 4, focus = 3, and transition width = 1 (updated user preference). Full opacity applies inside the near/far interval; smooth fading and additional Gaussian bokeh extend outside it. A further invisible guard contains ordinary particle births and recycling.
 
 Later presets may coordinate retreat, rendering distances, and field of view around an explicit selected target. Doubling shell distances alone does not preserve a subject's apparent size. A dolly zoom needs a target and corresponding field-of-view adjustment.
 

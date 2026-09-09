@@ -80,6 +80,11 @@ test('CPU and GPU reconstruct validated core samples and preserve the regular ax
 
 test('scrubbing to the near-singular endpoint and reframing keeps the core visible', async ({ page }, testInfo) => {
   await loadCore(page);
+  // Keep this transport/endpoint fixture within software-GPU fill budget.
+  // The separate default-view test still exercises the full default population.
+  await page.evaluate(() => {
+    const s = (window as any).__observatory.state; s.density = 40; s.renderScale = .5;
+  });
   await page.locator('#toggle-play').click();
   await expect.poll(() => page.evaluate(() => (window as any).__observatory.state.time)).toBeGreaterThan(0);
   await page.getByText('Time & transport', { exact: true }).click();
@@ -101,8 +106,8 @@ test('scrubbing to the near-singular endpoint and reframing keeps the core visib
     const audit = app.renderer.audit();
     const active = audit.particleSamples.some((value: number, i: number) => i % 4 === 3 && value > .1);
     const reframed = audit.particleSamples.every((value: number, i: number) => i % 4 === 3 || Math.abs(value) < .1);
-    return audit.lightMeasuredAt > after && audit.lightInput > 0 && active && reframed && app.state.ship.scale < .05;
-  }, reframeTime)).toBe(true);
+    return { fresh: audit.lightMeasuredAt > after, light: audit.lightInput > 0 ? 'positive' : String(audit.lightInput), active, reframed, scaled: app.state.ship.scale < .05 };
+  }, reframeTime)).toEqual({ fresh: true, light: 'positive', active: true, reframed: true, scaled: true });
   const report = await page.evaluate(() => {
     const app = (window as any).__observatory;
     return { audit: app.renderer.audit(), scale: app.state.ship.scale,

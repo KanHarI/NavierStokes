@@ -134,6 +134,9 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     v => { state.near = Math.min(v, state.far - .05); }, multiple);
   slider(optics, 'far', 'Shell outer radius', .15, 8, .05, () => state.far,
     v => { state.far = Math.max(v, state.near + .05); }, multiple);
+  slider(optics, 'shellFade', 'Shell transition width', .05, 2, .05, () => state.shellFade, v => { state.shellFade = v; }, multiple);
+  slider(optics, 'shellBokeh', 'Boundary bokeh', 0, 48, 1, () => state.shellBokeh, v => { state.shellBokeh = v; }, v => `${v.toFixed(0)} px`);
+  note(optics, 'The spherical shell uses distance from your ship. Beyond either radius, dust spreads into bokeh and fades through the transition band before recycling.');
   slider(optics, 'renderScale', 'Render resolution', .5, 1.5, .1, () => state.renderScale,
     v => { state.renderScale = v; }, v => `${Math.round(v * 100)}%`);
   slider(ship, 'scale', 'Observation scale', -17, 14, .05, () => Math.log2(state.ship.scale),

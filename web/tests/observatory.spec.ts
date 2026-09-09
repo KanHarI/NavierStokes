@@ -59,7 +59,7 @@ test('optics and density controls change independent state, and scale is multipl
     const state = (window as any).__observatory.state;
     return { near: state.near, far: state.far, focus: state.focus };
   });
-  expect(optics).toEqual({ near: 1, far: 3, focus: 2 });
+  expect(optics).toEqual({ near: 2, far: 4, focus: 3 });
 });
 
 test('playback pauses the simulation clock and independent dust leaves that clock paused', async ({ page }) => {

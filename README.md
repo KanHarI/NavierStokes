@@ -54,13 +54,13 @@ We will compute and explore a finite, resolved interval before the singular time
 - Fly in all directions with no fixed up direction, horizon lock, or automatic leveling.
 - Shrink or enlarge the ship's observation scale and explore the same flow at different sizes.
 - See luminous dust against a dark background, with ordinary finite-distance perspective.
-- Observe a spherical visibility shell, initially from **1× to 3× ship scale**, focused at **2×**.
+- Observe a spherical visibility shell, at full opacity from **2× to 4× ship scale**, focused at **3×**, with fade-in from **1× to 2×** and fade-out from **4× to 5×**.
 - Adjust field of view, visibility distances, focus, Gaussian defocus, ISO/exposure, and particle density independently.
 - Play, pause, change speed, or scrub simulation time.
 - Optionally move dust through a frozen velocity field, or change its speed independently of simulation playback.
 - Start with white lights; optionally map speed from blue to red and distance to saturation.
 
-Only dust in the observation shell and a small hidden buffer is simulated. Particles outside that region are recycled. The fluid field stays consistent, but revisiting a location does not guarantee seeing the same individual tracers.
+Only dust in the observation shell, its transition bands, and a hidden buffer is simulated. The default invisible recycling limits are 0.75× and 5.25× scale. Ordinary replacement particles are born at zero spatial opacity, in these guards or at a faded boundary of the available fluid patch. Initial loading, explicit reseeding, and density increases fill new samples with a temporal fade. The fluid field stays consistent, but revisiting a location does not guarantee seeing the same individual tracers.
 
 ### Proposed controls
 
@@ -82,7 +82,7 @@ All optical controls will be available in a panel. Later coupling presets may co
 
 ### Light and exposure
 
-Each particle has a normalized screen-space Gaussian light profile. Distance from the spherical focus shell determines its width. Increasing blur spreads the light without increasing its integrated brightness.
+Each particle has a normalized screen-space Gaussian light profile. Distance from the spherical focus shell determines its width. Outside the near/far radii, **Boundary bokeh** adds increasing Gaussian width while opacity fades to zero over **Shell transition width**. The default transition is 1× scale. The fade has zero slope and curvature at its endpoints, avoiding a sharp cutoff. Increasing blur spreads the light without increasing its integrated brightness; reducing opacity deliberately attenuates that total light. The same renderer also fades inside the edge of the computed field, without extrapolating its velocity. See [the shell validation](docs/validation/shell.md).
 
 The FOV control is **horizontal**, initially 65°. The renderer accounts for the unequal solid angle covered by perspective pixels when converting tracer light to image brightness. This removes a camera-centered brightening of a uniform dust shell without changing particle positions or warping the perspective. Blur conserves each particle's light after that conversion. See [the projection calibration](docs/validation/projection.md).
 

@@ -9,6 +9,8 @@ export interface AppState {
   near: number;
   far: number;
   focus: number;
+  shellFade: number;
+  shellBokeh: number;
   /** Horizontal field of view in degrees. */
   fov: number;
   blur: number;
@@ -50,7 +52,7 @@ export function initialState(): AppState {
     isCore,
     ship: { position: isCore ? [0, -.6, .15] : [0, -2.4, 0.6], orientation: [0.627,-0.0,0.0,0.779], scale: isCore ? .25 : 1 },
     movementSpeed: 0.5, pointerLocked: false,
-    near: 1, far: 3, focus: 2, fov: 65, blur: 6, exposure: 0,
+    near: 2, far: 4, focus: 3, shellFade: 1, shellBokeh: 24, fov: 65, blur: 6, exposure: 0,
     density: 500, densityCompensation: false, colorMode: 'white',
     distanceSaturation: false, renderScale: 1,
     time: 0, timeMin: 0, timeMax: 0.9, timeMode: 'linear', playing: false, playbackSpeed: 0.02,

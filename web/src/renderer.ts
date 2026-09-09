@@ -1,5 +1,6 @@
 import type { AppState } from './types';
 import type { FieldData } from './field';
+import { SHELL_GLSL, shellBounds } from './shell';
 import { planTransport, type TransportPlan } from './transport';
 
 const MAX_PARTICLES = 120_000;
@@ -7,6 +8,11 @@ const LUMA = 'vec3(0.2126,0.7152,0.0722)';
 const fullscreen = `#version 300 es
 void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);gl_Position=vec4(p*2.-1.,0,1);}`;
 const fieldGLSL = `
+${SHELL_GLSL}
+uniform vec3 uShip;
+uniform float uScale;
+uniform vec2 uOpticalShell;
+uniform float uShellFade,uBoundaryBlur;
 uniform sampler2D uProfile;
 uniform vec4 uDomain;
 uniform vec4 uModel; // h, cInfinity, table zMax, table zMin
@@ -50,26 +56,61 @@ vec3 velocityAt(vec3 p,float tau){
   float speed=uModel.y*pow(r*r/2.,-.5-uModel.x)*profile(z);
   return vec3(-p.y,p.x,0)*speed/r;
 }
-vec3 velocity(vec3 p){return velocityAt(p,uTau);}`;
+vec3 velocity(vec3 p){return velocityAt(p,uTau);}
+// Fade to zero while still INSIDE the available field. The last fraction
+// of each boundary layer is an invisible reservoir; no field is extrapolated.
+float fieldVisibility(vec3 p){
+  if(!valid(p))return 0.;
+  float margin;
+  if(uCore==1){
+    vec3 c=coreCoordinates(p,uTau);
+    margin=min((1.-c.x/uCoreDomain.y)/.1,(1.-abs(c.y)/uCoreDomain.z)/.1);
+  }else{
+    float r=length(p.xy);
+    margin=min(min(r-uDomain.x,uDomain.y-r)/(.05*(uDomain.y-uDomain.x)),
+      min(p.z-uDomain.z,uDomain.w-p.z)/(.05*(uDomain.w-uDomain.z)));
+  }
+  return shellQuintic((margin-.15)/.85);
+}
+float spatialVisibility(vec3 p){
+  return fieldVisibility(p)*shellOpticalWeights(length(p-uShip)/uScale,uOpticalShell,uShellFade,uBoundaryBlur).x;
+}`;
 const updateVertex = `#version 300 es
 precision highp float;
 layout(location=0) in vec4 aParticle;
 out vec4 nextParticle;
 ${fieldGLSL}
-uniform vec3 uShip;
 uniform vec2 uShell;
-uniform float uScale,uDelta,uWall,uSeed,uTauStart,uTimeDelta,uGeometricDecay,uFirstWeight;
-uniform int uSteps,uReseed;
+uniform float uDelta,uWall,uSeed,uTauStart,uTimeDelta,uGeometricDecay,uFirstWeight;
+uniform int uSteps,uReseed,uFill,uNewFrom,uSpawnAttempts;
 float random(inout uint seed){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return float(seed)/4294967295.;}
 vec3 spawn(inout uint seed){
   float h=2.*random(seed)-1.;float phi=6.2831853*random(seed);
   float radius=pow(mix(pow(uShell.x,3.),pow(uShell.y,3.),random(seed)),1./3.)*uScale;
   return uShip+radius*vec3(sqrt(1.-h*h)*cos(phi),sqrt(1.-h*h)*sin(phi),h);
 }
+vec3 spawnHidden(inout uint seed){
+  // Also replenish cropped core boundaries, which can lie inside the shell.
+  if(uCore==1&&random(seed)<.5){
+    float eta=(2.*random(seed)-1.)*uCoreDomain.z;
+    float Y=random(seed)*uCoreDomain.y;
+    if(random(seed)<.5)Y=uCoreDomain.y*mix(.99,.999,random(seed));
+    else eta=(random(seed)<.5?-1.:1.)*uCoreDomain.z*mix(.99,.999,random(seed));
+    float q=uTau/(1.-eta*eta),r=sqrt(2.*q*Y/uCoreDomain.x),phi=6.2831853*random(seed);
+    return vec3(r*cos(phi),r*sin(phi),eta*pow(q,.5-uModel.x));
+  }
+  vec2 support=shellSupport(uOpticalShell,uShellFade);
+  float innerVolume=max(0.,pow(support.x,3.)-pow(uShell.x,3.));
+  float outerVolume=max(0.,pow(uShell.y,3.)-pow(support.y,3.));
+  vec2 band=random(seed)*(innerVolume+outerVolume)<innerVolume?vec2(uShell.x,support.x):vec2(support.y,uShell.y);
+  float h=2.*random(seed)-1.,phi=6.2831853*random(seed);
+  float r=pow(mix(pow(band.x,3.),pow(band.y,3.),random(seed)),1./3.)*uScale;
+  return uShip+r*vec3(sqrt(max(0.,1.-h*h))*cos(phi),sqrt(max(0.,1.-h*h))*sin(phi),h);
+}
 void main(){
   uint seed=uint(gl_VertexID+1)*747796405u+uint(uSeed)*2891336453u+277803737u;
   vec3 p=aParticle.xyz;float age=aParticle.w;
-  bool reborn=uReseed==1||age<0.;
+  bool reborn=uReseed==1||age<0.||gl_VertexID>=uNewFrom;
   if(!reborn){
     for(int i=0;i<uSteps;i++){
       float decay=exp(-uGeometricDecay*float(i));
@@ -83,7 +124,12 @@ void main(){
     reborn=reborn||!valid(p)||d<uShell.x||d>uShell.y;
   }
   if(reborn){
-    age=-1.;for(int i=0;i<24;i++){p=spawn(seed);if(valid(p)){age=0.;break;}}
+    bool fill=uFill==1||gl_VertexID>=uNewFrom;
+    age=-1.;for(int i=0;i<uSpawnAttempts;i++){
+      p=fill?spawn(seed):spawnHidden(seed);
+      float distance=length(p-uShip)/uScale;
+      if(valid(p)&&distance>=uShell.x&&distance<=uShell.y&&(fill||spatialVisibility(p)<=0.)){age=0.;break;}
+    }
   }else{age=min(age+uWall,10.);}
   nextParticle=vec4(p,age);
 }`;
@@ -93,10 +139,9 @@ const drawVertex = `#version 300 es
 precision highp float;
 layout(location=0) in vec4 aParticle;
 ${fieldGLSL}
-uniform vec3 uShip;
 uniform vec4 uOrientation;
 uniform vec2 uResolution,uShell;
-uniform float uScale,uFocus,uBlur,uFov,uExposure,uBrightness,uColorMax;
+uniform float uFocus,uBlur,uFov,uExposure,uBrightness,uColorMax;
 uniform int uColor,uSaturation;
 out vec2 vOffset;
 out vec3 vColor;
@@ -107,22 +152,22 @@ void main(){
   vec3 rel=(aParticle.xyz-uShip)/uScale;
   float d=length(rel);
   vec3 camera=rotate(vec4(-uOrientation.xyz,uOrientation.w),rel);
-  float sigma=sqrt(1.1*1.1+pow(uBlur*abs(1./max(d,.001)-1./uFocus),2.));
-  sigma=min(sigma,64.);vSigma=sigma;
+  vec2 shell=shellOpticalWeights(d,uOpticalShell,uShellFade,uBoundaryBlur);
+  float baseSigma=sqrt(1.1*1.1+pow(uBlur*abs(1./max(d,.001)-1./uFocus),2.));
+  float sigma=shellGaussianSigma(baseSigma,shell.y,64.);vSigma=sigma;
   vec2 corner=corners[gl_VertexID];vOffset=corner*3.*sigma;
   float tangent=tan(uFov*.5);
   // uFov is horizontal. Keep the same focal scale on both image axes.
   vec2 ndc=camera.xy/max(-camera.z,.0001)/vec2(tangent,tangent*uResolution.y/uResolution.x);
   gl_Position=vec4(ndc+vOffset*2./uResolution,0.,1.);
-  float feather=min(.15,(uShell.y-uShell.x)*.15);
-  float visibility=smoothstep(uShell.x,uShell.x+feather,d)*(1.-smoothstep(uShell.y-feather,uShell.y,d));
+  float visibility=shell.x*fieldVisibility(aParticle.xyz);
   float ageFade=smoothstep(0.,.35,aParticle.w);
   // Uniform solid angle projects to cos(theta)^3 samples per pixel area.
   // Convert each angular tracer's light to the image-area measure BEFORE
   // Gaussian normalization. This keeps uniform angular dust exposure uniform.
   // Cull the complete footprint first: grazing, offscreen rays must not create
   // unbounded weights. The viewport plus its Gaussian guard band bounds gain.
-  bool visible=camera.z<-.001&&aParticle.w>=0.&&valid(aParticle.xyz)
+  bool visible=camera.z<-.001&&aParticle.w>=0.&&visibility>0.
     &&all(lessThanEqual(abs(ndc),vec2(1.)+6.*sigma/uResolution));
   float imageAreaWeight=visible?pow(d/max(-camera.z,.001),3.):0.;
   vLight=12.*uBrightness*exp2(uExposure)*visibility*ageFade*imageAreaWeight;
@@ -302,6 +347,8 @@ export class Renderer {
     this.i(p, 'uCore', m.core ? 1 : 0);
     gl.uniform3f(this.uniform(p, 'uCoreDomain'), m.model.lambda ?? 1, m.core?.yMax ?? 1, m.core?.etaMax ?? .9);
     gl.uniform3fv(this.uniform(p, 'uShip'), s.ship.position);
+    gl.uniform2f(this.uniform(p, 'uOpticalShell'), s.near, s.far);
+    this.f(p, 'uShellFade', s.shellFade); this.f(p, 'uBoundaryBlur', s.shellBokeh);
     this.f(p, 'uTau', m.time.singular - s.time); this.f(p, 'uScale', s.ship.scale);
   }
   reseed() { this.resetPending = true; }
@@ -309,7 +356,9 @@ export class Renderer {
   render(wallDelta: number, transportDelta: number, timeDelta = 0): void {
     if (this.disposed) return;
     this.resize(); const gl = this.gl; const s = this.state;
-    const shellVolume = 4 * Math.PI / 3 * (s.far ** 3 - s.near ** 3);
+    const bounds = shellBounds({ near: s.near, far: s.far, transitionWidth: s.shellFade });
+    const shellVolume = 4 * Math.PI / 3 * (bounds.guard[1] ** 3 - bounds.guard[0] ** 3);
+    const previousCount = this.count;
     const desired = Math.min(MAX_PARTICLES, Math.max(100, Math.round(s.density * shellVolume)));
     const change = Math.max(1, Math.ceil(MAX_PARTICLES * wallDelta));
     this.count = this.count === 0 ? desired : this.count + Math.max(-change, Math.min(change, desired - this.count));
@@ -323,11 +372,13 @@ export class Renderer {
     this.transportAudit = { ...transport, reseeded: this.resetPending || transport.reseed };
     const next = 1 - this.index;
     gl.useProgram(this.updateProgram.program); this.common(this.updateProgram);
-    gl.uniform2f(this.uniform(this.updateProgram, 'uShell'), Math.max(.001, s.near * .8), s.far * 1.1);
+    gl.uniform2f(this.uniform(this.updateProgram, 'uShell'), ...bounds.guard);
+    this.i(this.updateProgram, 'uNewFrom', previousCount); this.i(this.updateProgram, 'uSpawnAttempts', 24);
     this.f(this.updateProgram, 'uDelta', transport.actualDelta); this.f(this.updateProgram, 'uWall', wallDelta);
     this.f(this.updateProgram, 'uTauStart', transport.tauStart); this.f(this.updateProgram, 'uTimeDelta', timeDelta);
     this.f(this.updateProgram, 'uGeometricDecay', transport.geometricDecay); this.f(this.updateProgram, 'uFirstWeight', transport.firstWeight);
     this.f(this.updateProgram, 'uSeed', this.seed++); this.i(this.updateProgram, 'uSteps', transport.steps);
+    this.i(this.updateProgram, 'uFill', this.resetPending ? 1 : 0);
     this.i(this.updateProgram, 'uReseed', this.transportAudit.reseeded ? 1 : 0); this.resetPending = false;
     gl.bindVertexArray(this.updateVAOs[this.index]); gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.feedback);
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, this.particleBuffers[next]);
@@ -423,6 +474,49 @@ export class Renderer {
     }
   }
 
+  /** Force ordinary particle retirement and measure the real GPU birth opacity. */
+  auditShellRecycling() {
+    const gl = this.gl, count = 128;
+    const input = gl.createBuffer()!, output = gl.createBuffer()!, measured = gl.createBuffer()!;
+    const vao = gl.createVertexArray()!, outputVAO = gl.createVertexArray()!;
+    const probe = this.program(`#version 300 es\nprecision highp float;
+      layout(location=0) in vec4 particle;out vec2 result;
+      ${fieldGLSL}
+      void main(){result=vec2(spatialVisibility(particle.xyz),particle.w);}`, emptyFragment, ['result']);
+    try {
+      const data = new Float32Array(count * 4);
+      for (let i = 0; i < count; i++) { data[i * 4] = 1e4; data[i * 4 + 3] = 10; }
+      gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, input); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STREAM_DRAW);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 16, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, output); gl.bufferData(gl.ARRAY_BUFFER, data.byteLength, gl.STREAM_READ);
+      gl.bindVertexArray(outputVAO); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 16, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, measured); gl.bufferData(gl.ARRAY_BUFFER, count * 8, gl.STREAM_READ);
+      gl.bindBuffer(gl.ARRAY_BUFFER, null);
+      const p = this.updateProgram; gl.useProgram(p.program); this.common(p);
+      const s = this.state, bounds = shellBounds({ near: s.near, far: s.far, transitionWidth: s.shellFade });
+      gl.uniform2f(this.uniform(p, 'uShell'), ...bounds.guard);
+      this.i(p, 'uSteps', 0); this.i(p, 'uReseed', 0); this.i(p, 'uFill', 0); this.i(p, 'uNewFrom', count); this.i(p, 'uSpawnAttempts', 24);
+      this.f(p, 'uWall', .016); this.f(p, 'uSeed', 43);
+      gl.bindVertexArray(vao); gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.feedback);
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, output); gl.enable(gl.RASTERIZER_DISCARD);
+      gl.beginTransformFeedback(gl.POINTS); gl.drawArrays(gl.POINTS, 0, count); gl.endTransformFeedback();
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+      gl.useProgram(probe.program); this.common(probe); gl.bindVertexArray(outputVAO);
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, measured);
+      gl.beginTransformFeedback(gl.POINTS); gl.drawArrays(gl.POINTS, 0, count); gl.endTransformFeedback();
+      gl.disable(gl.RASTERIZER_DISCARD); gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+      gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+      const values = new Float32Array(count * 2);
+      gl.bindBuffer(gl.COPY_READ_BUFFER, measured); gl.getBufferSubData(gl.COPY_READ_BUFFER, 0, values); gl.bindBuffer(gl.COPY_READ_BUFFER, null);
+      const births = Array.from({ length: count }, (_, i) => ({ opacity: values[i * 2], age: values[i * 2 + 1] })).filter(x => x.age === 0);
+      return { births: births.length, maximumBirthOpacity: Math.max(0, ...births.map(x => x.opacity)),
+        finite: [...values].every(Number.isFinite), glError: gl.getError() };
+    } finally {
+      gl.deleteBuffer(input); gl.deleteBuffer(output); gl.deleteBuffer(measured); gl.deleteVertexArray(vao); gl.deleteVertexArray(outputVAO);
+      gl.deleteProgram(probe.program); this.programs = this.programs.filter(p => p !== probe);
+    }
+  }
+
   /** Small synthetic GPU scenes exercise the actual redistribution shaders. */
   auditLight() {
     const gl = this.gl;
@@ -472,6 +566,7 @@ export class Renderer {
         const p = this.drawProgram; gl.useProgram(p.program); this.common(p);
         gl.uniform3f(this.uniform(p, 'uShip'), 2, 0, 0); gl.uniform4f(this.uniform(p, 'uOrientation'), 0, 0, 0, 1);
         gl.uniform2f(this.uniform(p, 'uResolution'), 64, 64); gl.uniform2f(this.uniform(p, 'uShell'), 1, 3);
+        gl.uniform2f(this.uniform(p, 'uOpticalShell'), 1, 3);
         this.f(p, 'uScale', 1); this.f(p, 'uFocus', 2); this.f(p, 'uBlur', 8); this.f(p, 'uFov', 1);
         this.f(p, 'uExposure', 0); this.f(p, 'uBrightness', 1); this.i(p, 'uColor', 0);
         gl.disable(gl.BLEND); gl.bindVertexArray(vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 1);
@@ -518,6 +613,7 @@ export class Renderer {
         const p = this.drawProgram; gl.useProgram(p.program); this.common(p);
         gl.uniform3f(this.uniform(p, 'uShip'), 4, 0, 0); gl.uniform4fv(this.uniform(p, 'uOrientation'), orientation.q);
         gl.uniform2f(this.uniform(p, 'uResolution'), width, height); gl.uniform2f(this.uniform(p, 'uShell'), 1, 3);
+        gl.uniform2f(this.uniform(p, 'uOpticalShell'), 1, 3);
         this.f(p, 'uScale', .5); this.f(p, 'uFocus', 1); this.f(p, 'uBlur', 6);
         this.f(p, 'uFov', fov * Math.PI / 180); this.f(p, 'uExposure', -6); this.f(p, 'uBrightness', 1); this.i(p, 'uColor', 0);
         gl.bindVertexArray(vao); gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE);
