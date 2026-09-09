@@ -48,7 +48,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     <div class="reticle" aria-hidden="true"></div>
     <div class="flight-prompt" id="flight-prompt"><button id="enter-flight">Click to fly <span aria-hidden="true">↗</span></button></div>
     <section class="intro-card" id="intro-card" aria-label="Four views of a singularity, a repeating four-view sequence" hidden>
-      <div class="intro-kicker">Four views of a singularity <span aria-hidden="true">/</span> <span id="intro-shot-number">01</span></div>
+      <div class="intro-kicker">Four views of a singularity <span aria-hidden="true">/</span> <span id="intro-shot-number">01</span><span id="intro-rate">1× speed</span></div>
       <h2 class="intro-title" id="intro-title">The gathering</h2>
       <p class="intro-description" id="intro-caption">A fluid accelerates. Space holds still.</p>
       <p class="intro-measures"><span>Linear time <span id="intro-time">0.0000</span></span><span>Core width <span id="intro-scale-ratio">1.00×</span></span><span>Axis speed <span id="intro-speed-ratio">1.0×</span></span></p>
@@ -244,6 +244,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
         find('#intro-speed-ratio').textContent = `${state.introSpeedRatio.toFixed(1)}×`;
         find('#intro-time').textContent = state.time.toFixed(4);
         introNumber.textContent = String(state.introShot + 1).padStart(2, '0');
+        find('#intro-rate').textContent = state.introRate === 1 ? '1× speed' : `1/${Math.round(1/state.introRate)}× speed`;
         introSegments.forEach((segment, index) => {
           const progress = index < state.introShot ? 1 : index === state.introShot ? state.introProgress : 0;
           segment.style.setProperty('--shot-progress', String(Math.max(0, Math.min(1, progress))));

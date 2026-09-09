@@ -41,7 +41,7 @@ function startIntro() {
   state.timeMode = 'linear'; state.density = 70; state.exposure = 2.5;
   state.densityCompensation = false;
   introElapsed = 0; introSegment = -1; introPriming = true; reseedAt = -1;
-  state.introShot = 0; state.introProgress = 0;
+  state.introShot = 0; state.introProgress = 0; state.introRate = 1;
   state.introTitle = sampleIntro(0).title; state.introCaption = sampleIntro(0).caption;
   canvas.style.transition = 'none'; canvas.style.opacity = '0';
   lastFrame = performance.now(); ui.update();
@@ -126,6 +126,7 @@ function frame(now: number) {
     if (restart) { renderer.reseed(); introSegment = segment; }
     state.time = shot.time; state.playing = shot.time < state.timeMax;
     state.introShot = shot.shot; state.introProgress = shot.phase;
+    state.introRate = shot.rate;
     state.introTitle = shot.title; state.introCaption = shot.caption;
     state.introScaleRatio = Math.sqrt((1-shot.time)/(1-state.timeMin));
     state.introSpeedRatio = ((1-state.timeMin)/(1-shot.time))**(.5+renderer.field.manifest.model.h);
@@ -133,7 +134,7 @@ function frame(now: number) {
     state.near = shot.near; state.far = shot.far; state.focus = shot.focus; state.shellFade = shot.shellFade;
     state.blur = shot.blur; state.shellBokeh = shot.shellBokeh; state.fov = shot.fov;
     state.exposure = shot.exposure;
-    state.playbackSpeed = (state.timeMax-shot.startTime)/4.5;
+    state.playbackSpeed = (state.timeMax-shot.startTime)/4.5 * shot.rate;
     canvas.style.opacity = String(shot.opacity);
   } else {
     navigation.update(dt);

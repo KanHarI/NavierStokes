@@ -1,8 +1,11 @@
 # Four views of the concentrating core
 
 The arrival sequence is rendered live in WebGL, using the same precomputed
-field and particle integrator as exploration. It lasts **22 seconds** and
-loops: four 5.5-second approaches, with a fresh dust population after each.
+field and particle integrator as exploration. Its first cycle lasts **22
+seconds**: four 5.5-second approaches, with fresh dust after each. Every
+complete repeat halves playback speed again: 1×, ½×, ¼×, ⅛×, …, giving
+cycle durations of 22, 44, 88, 176 seconds, etc. There is no fixed speed floor.
+Camera paths, optical transitions, and physical time all share this clock.
 The complete sequence uses **white light**. Temporary speed coloring and
 distance desaturation were used only during visual composition.
 
@@ -13,7 +16,7 @@ distance desaturation were used only during visual composition.
 | Faster. Narrower. | 0.99 | 0.04 | 74° |
 | Closer to infinity | 0.999 | 0.01265 | −28° |
 
-Every view advances **linearly** to t=0.9999 over 4.5 seconds, after a
+On the first cycle, every view advances **linearly** to t=0.9999 over 4.5 seconds, after a
 0.35-second fade-in. The endpoint is held briefly, then the image fades to
 black for the next restart. Later views explicitly identify the shorter
 physical interval. They are magnified replays, not four identical-duration
@@ -42,7 +45,7 @@ The opening uses deliberately chosen ISO values; exposure does not adjust
 automatically during manual exploration. **Explore the flow**, **Controls**,
 Escape, or an input edit ends the choreography and preserves the current
 camera and optics. The field pauses on handoff. **Replay sequence** starts
-again. Users requesting reduced motion, `?intro=0`, and explicit isolated
+again at the original 1× speed. Users requesting reduced motion, `?intro=0`, and explicit isolated
 field URLs start in manual mode.
 
 ## What the measurements mean
@@ -79,7 +82,10 @@ dust already in view keeps its position.
 
 - A real-time Playwright run observes all four shots and the restart after
   22 seconds, with finite particle state and white rendering.
-- Clock checks cover the four physical intervals and changing camera/optics.
+- Clock checks cover the four physical intervals and changing camera/optics,
+  the boundaries of five progressively slower cycles, and identical
+  compositions at corresponding moments. The real-time run checks the
+  transition to ½ speed and Replay resetting to 1×.
 - Interaction checks cover keyboard handoff, controls, replay, and reduced
   motion; editing an input preserves the user's new value.
 - GPU integration of both circular and directional Gaussian footprints

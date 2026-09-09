@@ -92,11 +92,55 @@ test('the default cinematic sequence actually plays four views and loops in real
   expect(report.elapsed).toBeGreaterThanOrEqual(22_000);
   expect(report.shots.slice(0, 5)).toEqual([0, 1, 2, 3, 0]);
   expect(report.white).toBe(true);
+  await expect(page.locator('#intro-rate')).toHaveText('1/2× speed');
+  expect(await page.evaluate(() => (window as any).__observatory.state.introRate)).toBe(.5);
   expect(captures.filter(capture => capture.lightInput > 0).length).toBeGreaterThanOrEqual(3);
   expect(new Set(captures.map(capture => capture.title)).size).toBe(4);
   for (let i = 1; i < captures.length; i++) expect(captures[i].scale).toBeLessThan(captures[i - 1].scale);
   await info.attach('real-time-intro-audit', { body: JSON.stringify({ ...report, captures }, null, 2), contentType: 'application/json' });
   expect(errors).toEqual([]);
+  await page.keyboard.press('Escape');
+  await replay(page);
+  await expect(page.locator('#intro-rate')).toHaveText('1× speed');
+  expect(await page.evaluate(() => (window as any).__observatory.state.introRate)).toBe(1);
+});
+
+test('each complete four-view cycle halves every part of the choreography again', async ({ page }) => {
+  await page.route('**/intro-module-host', route => route.fulfill({
+    contentType: 'text/html', body: '<!doctype html><title>Intro cycle speeds</title>',
+  }));
+  await page.goto('/intro-module-host');
+  const report = await page.evaluate(async () => {
+    const { sampleIntro } = await import('/src/intro.ts');
+    // First, second, third, fourth and fifth cycle starts (seconds).
+    return [0, 22, 66, 154, 330].map((start, cycle) => {
+      const duration = [22, 44, 88, 176, 352][cycle];
+      return { start: sampleIntro(start), beforeNext: sampleIntro(start+duration-1e-6),
+        next: sampleIntro(start+duration), pairs: [0, 1, 2, 3].map(shot => {
+          const point = shot*5.5+2;
+          const original = sampleIntro(point), slowed = sampleIntro(start+point*duration/22);
+          const later = sampleIntro(start+(point+.5)*duration/22);
+          return { original, slowed, later, originalLater: sampleIntro(point+.5) };
+        }) };
+    });
+  });
+  for (const [cycle, result] of report.entries()) {
+    expect(result.start.cycle).toBe(cycle);
+    expect(result.start.rate).toBe(2**-cycle);
+    expect(result.start.shot).toBe(0); expect(result.start.time).toBe(0);
+    expect(result.beforeNext.shot).toBe(3); expect(result.beforeNext.time).toBe(.9999);
+    expect(result.next.cycle).toBe(cycle+1); expect(result.next.shot).toBe(0);
+    expect(result.next.rate).toBe(2**(-cycle-1));
+    for (const { original, slowed, later, originalLater } of result.pairs) {
+      expect(slowed.shot).toBe(original.shot);
+      for (const property of ['phase', 'time', 'scale', 'fov', 'focus', 'exposure', 'opacity'] as const) {
+        expect(slowed[property]).toBeCloseTo(original[property], 12);
+      }
+      expect(slowed.position).toEqual(original.position);
+      expect(slowed.orientation).toEqual(original.orientation);
+      expect(later.time-slowed.time).toBeCloseTo(originalLater.time-original.time, 12);
+    }
+  }
 });
 
 test('each cinematic view uses a linear clock in an honest, progressively later time window', async ({ page }) => {

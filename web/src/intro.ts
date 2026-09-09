@@ -34,8 +34,15 @@ function unitQuaternion(q: Quat): Quat { const n=Math.hypot(...q); return q.map(
  * Camera motion never changes the scientific velocity field or tracer speed.
  */
 export function sampleIntro(elapsed: number, timeMin = 0, timeMax = .9999) {
-  const total = Math.max(0, elapsed), cycle = Math.floor(total / INTRO_DURATION);
-  const within = total % INTRO_DURATION, shot = Math.min(3, Math.floor(within/INTRO_SHOT_SECONDS));
+  if (!Number.isFinite(elapsed)) throw new Error('Intro elapsed time must be finite.');
+  // Whole four-view cycles take 22, 44, 88, ... seconds. Subtraction keeps
+  // exact cycle boundaries stable without rounding logarithms near powers of 2.
+  let remaining = Math.max(0, elapsed), cycle = 0, stretch = 1;
+  while (remaining >= INTRO_DURATION*stretch) {
+    remaining -= INTRO_DURATION*stretch; stretch *= 2; cycle++;
+  }
+  const rate = 1/stretch, within = remaining*rate;
+  const shot = Math.min(3, Math.floor(within/INTRO_SHOT_SECONDS));
   const local = within-shot*INTRO_SHOT_SECONDS, phase = local/INTRO_SHOT_SECONDS, config = shots[shot];
   const startTime = Math.min(timeMax, 1-(1-timeMin)*10**(-shot));
   const play = Math.max(0, Math.min(1, (local-FADE_IN)/(PLAY_END-FADE_IN)));
@@ -48,7 +55,7 @@ export function sampleIntro(elapsed: number, timeMin = 0, timeMax = .9999) {
   const azimuth = radians(config.azimuth+24*(smooth(phase)-.5));
   const elevation = radians(config.elevation+5*Math.sin(phase*Math.PI));
   const position: Vec3 = [distance*Math.cos(elevation)*Math.cos(azimuth), distance*Math.cos(elevation)*Math.sin(azimuth), distance*Math.sin(elevation)];
-  return { cycle, shot, phase, time, startTime, title: config.title, caption: config.caption,
+  return { cycle, rate, shot, phase, time, startTime, title: config.title, caption: config.caption,
     opacity: smooth(local/FADE_IN)*(1-smooth((local-FADE_OUT)/(INTRO_SHOT_SECONDS-FADE_OUT))),
     position, orientation: orientation(position,radians(config.roll+3*Math.sin(phase*Math.PI))),
     scale, fov: config.fov-4*smooth(phase),

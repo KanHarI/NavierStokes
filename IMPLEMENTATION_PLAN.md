@@ -10,7 +10,7 @@ The user has authorized writing these documents, creating a public GitHub reposi
 
 ### Current checkpoint
 
-A 22-second cinematic arrival now presents four linear-time approaches from different elevations and explicitly labeled time windows. The final rendering is monochrome; parallax, focus, and normalized flow-aligned motion exposure provide depth. Manual input ends the sequence immediately. This presentation does not change the represented fluid equations or complete the remaining scientific work.
+A cinematic arrival starts with a 22-second cycle and halves its speed after each complete four-view repeat. It presents four linear-time approaches from different elevations and explicitly labeled time windows. The final rendering is monochrome; parallax, focus, and normalized flow-aligned motion exposure provide depth. Manual input ends the sequence immediately. This presentation does not change the represented fluid equations or complete the remaining scientific work.
 
 The default view now adds continuous surroundings to the computed core: Appendix B.22 reference continuation, a streamfunction join to the heat exterior, a matched radial pressure moment, and smooth physical localization to stationary fluid. See docs/extended-flow.md for the equations and remaining source conditions. The renderer reconstructs both meridional components from a common bicubic primitive, keeps dust in stationary fluid, and removes the old shrinking data crop from this default mode. The two original isolated checkpoints remain selectable.
 
