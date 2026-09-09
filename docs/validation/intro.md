@@ -12,9 +12,25 @@ The first clip starts at the dataset's initial time. Later clips draw a
 continuous magnification between the full interval and its last thousandth.
 Their captions identify the actual starting and ending times. Each has a
 0.35-second fade-in, linear physical-time progression for duration minus
-one second, a 0.30-second endpoint hold, and a 0.35-second fade-out. Every
+0.70 seconds, and a 0.35-second fade-out of the final rendered image. Every
 clip reaches t=0.9999 before restarting. The renderer completes its initial
-GPU work before starting the clock. Background-tab time does not advance.
+GPU work before starting each clip's clock. At the endpoint it completes
+the final GPU frame before starting a separate fade clock. No particles,
+camera settings, or motion footprints change during that fade. One black
+presentation precedes the next reset, and excess frame time is not carried
+into the new clip. This removes the old 300 ms post-endpoint hold and the
+possibility of a costly integration step skipping the whole transition.
+The configured 5–30 seconds excludes unavoidable GPU stalls. Background-tab
+time does not advance.
+
+## Loading
+
+The first HTML includes a monochrome snow overlay with an embedded SVG dot
+tile and CSS-only drift. It needs no downloaded image, JavaScript, or WebGL
+context. Reduced-motion preferences disable the drift. Startup reports
+loading flow data and preparing the view separately, and hides the overlay
+only after completing the first GPU frame. Debug startup timestamps separate
+download/decode, renderer creation, and first-frame preparation.
 
 ## Camera, depth, and light
 
@@ -41,16 +57,34 @@ integrated particle light. The straight-motion approximation is bounded to
 2% of remaining physical time, with a 36-pixel travel cap. It neither emits
 extra light when velocity rises nor draws artificial radial bursts.
 
-Exposure is choreographed only during the introduction. **Explore the
-flow**, **Controls**, Escape, or an input edit ends choreography, preserves
-the camera and optics, and pauses the field. **Replay sequence** starts a
+Exposure is choreographed only during the introduction. **Click to look
+around** captures the mouse and composes a relative look rotation with the
+generated camera. WASD translates, R/F moves up/down, Q/E rolls, and Z/X
+changes radar range without changing the camera or movement scale; generated motion, optics, and
+physical time continue. Additional keys adjust ISO (−/+), field of view ([/]), shell depth (1/2),
+focus (3/4), and bokeh (5/6). Every new clip clears the user position,
+scale, rotation, and optical offsets, restoring its generated starting view. **Press Space to take
+control** switches to manual flight at the current view and pauses the field.
+Space then toggles play/pause. **Controls** or an input edit also hands over.
+Escape releases mouse capture and resumes procedural viewing in one press
+(or recenters an already-running movie). **Replay sequence** starts a
 fresh procedural sequence. Reduced-motion users, `?intro=0`, and explicit
 isolated field URLs start in manual mode.
+
+Clicking to look switches from the explanatory arrival screen to a game HUD.
+Only the HUD remains, with gauges for keyboard-controlled settings: radar
+range/thickness, focus, bokeh, ISO/EV, field of view, position, attitude, travel
+rate/boost, playback, and time. Each control has a short explanation except
+WASD. Settings without keyboard mappings are omitted from these gauges. Key hints are not shown before that click. Manual mode
+shows “Esc — return to auto.”
 
 **Hide controls** removes all cockpit overlays, leaving a persistent
 **Show controls** button. Hiding/restoring neither stops the camera nor
 restarts the clock. Hidden controls are removed from keyboard navigation;
-the restore affordance remains usable on narrow screens.
+the restore affordance remains usable on narrow screens. **Screensaver**
+uses fullscreen and hides all text, HUD, and controls; Escape restores the
+interface while playback continues. Browsers without fullscreen support
+use the same text-free presentation in the viewport.
 
 ## What the measurements mean
 
@@ -89,10 +123,27 @@ dust already in view keeps its position.
   ordering, focus framing, linear time, and black restart boundaries.
 - A real-time browser check observes a complete generated approach and
   its successor with white rendering, finite particles, and no WebGL errors.
+- An injected endpoint GPU stall checks that the final image remains frozen
+  throughout its fade and reaches black before the next dust population.
+  Frame deltas and the GPU completion barrier use the same wall clock, so
+  a queued animation timestamp cannot count the endpoint stall again.
+- On macOS, the two mouse-capture integration checks use an asynchronous
+  pointer-lock event fixture. Chromium's automation rejects native capture
+  even on a minimal page ([upstream issue](https://github.com/microsoft/playwright/issues/20956)).
+  The real application input handlers, GPU renderer, clocks, and resets still
+  run; native permission and native Escape consumption remain unverified on
+  this runner. Other platforms use the native API. Screensaver fullscreen
+  and Escape use the native browser APIs here.
 - Interaction checks cover keyboard handoff, controls, replay, reduced
   motion, and hiding/restoring the interface without stopping playback.
 - GPU integration of circular and directional Gaussian footprints checks
   integrated particle light within 2% in the finite pixel fixture.
+- The 5/6 keyboard gesture adjusts both ordinary defocus and boundary bokeh;
+  both have HUD gauges. A GPU pixel-readback check holds each key, measures
+  wider off-focus footprints (including the fading outer shell), and verifies
+  that in-focus points stay sharp and integrated light stays within 2%.
+  Movie offsets discard overshoot at their limits so reversing a key responds
+  immediately; each new clip restores its own starting optics.
 - Existing numerical-field, stationary-dust, inflow, recycling, and
   perspective checks cover the underlying simulation and rendering.
 

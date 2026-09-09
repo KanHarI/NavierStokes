@@ -16,6 +16,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
         <span class="scope-badge" id="model-label"></span>
       </div>
       <nav class="header-actions" aria-label="Viewer tools">
+        <button class="quiet-button" id="screensaver">Screensaver</button>
         <button class="quiet-button" id="replay-intro">Replay sequence</button>
         <select id="field-select" aria-label="Scientific field"><option value="extended">Core & surroundings</option><option value="core">Isolated core</option><option value="exterior">Heat exterior</option></select>
         <button class="quiet-button" id="toggle-help" aria-expanded="false" aria-controls="flight-help">Flight guide</button>
@@ -37,10 +38,15 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
         <dt>W A S D</dt><dd>Forward, back, sideways</dd>
         <dt>R / F</dt><dd>Local up / down</dd>
         <dt>Q / E</dt><dd>Roll left / right</dd>
-        <dt>Z / X</dt><dd>Shrink / enlarge</dd>
+        <dt>Z / X</dt><dd>Radar range nearer / farther</dd>
         <dt>Shift</dt><dd>Travel faster</dd>
-        <dt>Space</dt><dd>Play / pause</dd>
-        <dt>Esc</dt><dd>Release mouse</dd>
+        <dt>− / +</dt><dd>ISO / brightness down / up</dd>
+        <dt>[ / ]</dt><dd>Field of view narrower / wider</dd>
+        <dt>1 / 2</dt><dd>Shell depth narrower / wider</dd>
+        <dt>3 / 4</dt><dd>Focus nearer / farther</dd>
+        <dt>5 / 6</dt><dd>Gaussian bokeh less / more</dd>
+        <dt>Space</dt><dd>Take control during a movie; otherwise play / pause</dd>
+        <dt>Esc</dt><dd>Return to the automatic movie</dd>
       </dl>
       <p class="small-note">There is no fixed up. Scale changes your viewing distances and travel speed. Light is sharp at the focus shell and spreads softly on either side.</p>
       <p class="small-note scope-note" id="model-description"></p>
@@ -48,15 +54,40 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     </aside>
     <div class="reticle" aria-hidden="true"></div>
     <div class="flight-prompt" id="flight-prompt"><button id="enter-flight">Click to fly <span aria-hidden="true">↗</span></button></div>
+    <div class="intro-look-prompt" id="intro-look-prompt" hidden>
+      <button id="explore-flow" class="explore-button">Click to look around <span aria-hidden="true">↗</span></button>
+    </div>
     <section class="intro-card" id="intro-card" aria-label="A singularity, many perspectives: a sequence of changing views" hidden>
       <div class="intro-kicker">A singularity, many perspectives <span aria-hidden="true">/</span> <span id="intro-shot-number">01</span><span id="intro-duration">5.0 s clip</span></div>
       <h2 class="intro-title" id="intro-title">The gathering</h2>
       <p class="intro-description" id="intro-caption">A fluid accelerates. Space holds still.</p>
       <p class="intro-measures"><span>Linear time <span id="intro-time">0.0000</span></span><span>Core width <span id="intro-scale-ratio">1.00×</span></span><span>Axis speed <span id="intro-speed-ratio">1.0×</span></span></p>
       <div class="intro-progress" role="progressbar" aria-label="Current clip progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
-      <div class="intro-actions">
-        <button id="explore-flow" class="explore-button">Explore the flow <span aria-hidden="true">↗</span></button>
-        <span class="intro-hint">Take the controls</span>
+    </section>
+    <section class="flight-hud" id="flight-hud" aria-label="Flight instruments and keyboard controls" hidden>
+      <div class="hud-instruments" tabindex="0" aria-label="All viewer instrument readings">
+        <div class="hud-heading">RADAR RANGE <output id="hud-range"></output></div>
+        <div class="hud-range-bar" aria-hidden="true"><span></span><i></i></div>
+        <dl class="hud-gauges">
+          <div><dt>Focus</dt><dd id="hud-focus"></dd></div>
+          <div><dt>ISO</dt><dd id="hud-iso"></dd></div>
+          <div><dt>View</dt><dd id="hud-fov"></dd></div>
+          <div><dt>Time</dt><dd id="hud-time"></dd></div>
+        </dl>
+        <div id="hud-setting-groups"></div>
+      </div>
+      <div class="hud-controls">
+        <div class="hud-control-heading">TRY THE CONTROLS <span id="hud-mode"></span></div>
+        <dl class="hud-key-list">
+          <div><dt>Mouse</dt><dd>Look</dd></div><div><dt>W A S D</dt><dd></dd></div>
+          <div><dt>R / F</dt><dd>Up / down</dd></div><div><dt>Q / E</dt><dd>Roll</dd></div>
+          <div><dt>Z / X</dt><dd>Radar range</dd></div><div><dt>Shift</dt><dd>Move faster</dd></div>
+          <div><dt>− / +</dt><dd>Brightness</dd></div><div><dt>[ / ]</dt><dd>View width</dd></div>
+          <div><dt>1 / 2</dt><dd>Shell thickness</dd></div><div><dt>3 / 4</dt><dd>Focus distance</dd></div>
+          <div><dt>5 / 6</dt><dd>Bokeh</dd></div><div><dt>Space</dt><dd id="hud-space-action">Take control</dd></div>
+          <div><dt>Esc</dt><dd>Return to auto</dd></div>
+        </dl>
+        <button id="take-control" class="quiet-button">Press Space to take control</button>
       </div>
     </section>
     <section class="telemetry" aria-label="Live telemetry">
@@ -76,6 +107,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     <button class="quiet-button interface-toggle" id="toggle-interface" aria-expanded="true" aria-controls="viewer-controls">Hide controls</button>`;
   container.append(root);
   const bindings: Binding[] = [];
+  const hudBindings: (() => void)[] = [];
   const listeners: (() => void)[] = [];
   const find = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
   const fieldSelect = find<HTMLSelectElement>('#field-select');
@@ -88,6 +120,44 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     element.addEventListener(event, callback);
     listeners.push(() => element.removeEventListener(event, callback));
   };
+  type Gauge = { key: string; label: string; read(): string; value?: () => number; min?: number; max?: number; wide?: boolean };
+  function hudGroup(title: string, gauges: Gauge[]) {
+    const section = document.createElement('section'); section.className = 'hud-group';
+    const heading = document.createElement('h3'); heading.textContent = title;
+    const readings = document.createElement('dl'); readings.className = 'hud-readouts';
+    for (const gauge of gauges) {
+      const row = document.createElement('div'); if (gauge.wide) row.className = 'hud-reading-wide';
+      const label = document.createElement('dt'); label.textContent = gauge.label;
+      const value = document.createElement('dd'); value.id = `hud-setting-${gauge.key}`;
+      row.append(label, value);
+      const meter = document.createElement('span'); meter.className = 'hud-meter'; meter.setAttribute('aria-hidden', 'true');
+      if (gauge.value) row.append(meter);
+      hudBindings.push(() => {
+        value.textContent = gauge.read();
+        if (gauge.value) meter.style.setProperty('--level', String(Math.max(0, Math.min(1,
+          (gauge.value() - (gauge.min ?? 0)) / ((gauge.max ?? 1) - (gauge.min ?? 0))))));
+      });
+      readings.append(row);
+    }
+    section.append(heading, readings); find('#hud-setting-groups').append(section);
+  }
+  const scaleUnits = (value: number) => `${value.toFixed(2)}×`;
+  hudGroup('Radar & light', [
+    { key: 'near', label: 'Inner radius', read: () => scaleUnits(state.near), value: () => state.near, min: .05, max: 8 },
+    { key: 'far', label: 'Outer radius', read: () => scaleUnits(state.far), value: () => state.far, min: .05, max: 8 },
+    { key: 'focus', label: 'Focus / scale', read: () => scaleUnits(state.focus), value: () => state.focus, min: .1, max: 8 },
+    { key: 'shellThickness', label: 'Shell thickness', read: () => scaleUnits(state.far - state.near), value: () => state.far - state.near, min: .05, max: 8 },
+    { key: 'blur', label: 'Gaussian defocus', read: () => state.blur.toFixed(1), value: () => state.blur, max: 30 },
+    { key: 'shellBokeh', label: 'Boundary bokeh', read: () => `${state.shellBokeh.toFixed(1)} px`, value: () => state.shellBokeh, max: 48 },
+    { key: 'exposure', label: 'Exposure', read: () => `${state.exposure >= 0 ? '+' : ''}${state.exposure.toFixed(1)} EV`, value: () => state.exposure, min: -6, max: 8 },
+  ]);
+  hudGroup('Flight', [
+    { key: 'movementSpeed', label: 'Travel / scales per s', read: () => (state.movementSpeed * (state.boosting ? 4 : 1)).toFixed(2) },
+    { key: 'boost', label: 'Shift boost', read: () => state.boosting ? '4× active' : '1× normal' },
+    { key: 'playing', label: 'Playback', read: () => state.playing ? 'Playing' : 'Paused' },
+    { key: 'position', label: 'Position · x / y / z', read: () => state.ship.position.map(formatScale).join(' / '), wide: true },
+    { key: 'orientation', label: 'Attitude · quaternion', read: () => state.ship.orientation.map(v => v.toFixed(2)).join(' / '), wide: true },
+  ]);
   function slider(section: string, key: string, label: string, min: number, max: number, step: number,
     read: () => number, write: (value: number) => void, format: (value: number) => string,
     enabled: () => boolean = () => true) {
@@ -208,7 +278,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
   const interfaceToggle = find<HTMLButtonElement>('#toggle-interface');
   on(interfaceToggle, 'click', () => {
     viewerControls.hidden = !viewerControls.hidden;
-    interfaceToggle.textContent = viewerControls.hidden ? 'Show controls' : 'Hide controls';
+    interfaceToggle.textContent = `${viewerControls.hidden ? 'Show' : 'Hide'} ${state.hudActive ? 'HUD' : 'controls'}`;
     interfaceToggle.setAttribute('aria-expanded', String(!viewerControls.hidden));
     root.classList.toggle('is-interface-hidden', viewerControls.hidden);
   });
@@ -225,8 +295,10 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     if (!help.hidden && innerWidth < 760) { panel.hidden = true; controlsToggle.setAttribute('aria-expanded', 'false'); }
   });
   on(find('#enter-flight'), 'click', () => actions.enterFlight());
-  on(find('#explore-flow'), 'click', () => actions.enterFlight());
+  on(find('#explore-flow'), 'click', () => actions.lookAround());
+  on(find('#take-control'), 'click', () => actions.enterFlight());
   on(replayIntro, 'click', () => actions.startIntro());
+  on(find('#screensaver'), 'click', () => actions.startScreensaver());
   on(find('#reset-view'), 'click', () => actions.reset());
   on(find('#reseed-dust'), 'click', () => actions.reseed());
   on(play, 'click', () => { if (hasFlow()) state.playing = !state.playing; });
@@ -239,7 +311,28 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
       for (const binding of bindings) binding.update();
       root.classList.toggle('is-captured', state.pointerLocked);
       root.classList.toggle('is-intro', state.introActive);
+      root.classList.toggle('is-hud', state.hudActive);
+      root.classList.toggle('is-screensaver', state.screensaver);
+      find<HTMLButtonElement>('#screensaver').disabled = !hasFlow() || !state.isCore;
       introCard.hidden = !state.introActive;
+      find('#intro-look-prompt').hidden = !state.introActive || state.hudActive || state.pointerLocked;
+      find('#flight-hud').hidden = !state.hudActive;
+      find('#take-control').hidden = !state.introActive;
+      interfaceToggle.textContent = `${viewerControls.hidden ? 'Show' : 'Hide'} ${state.hudActive ? 'HUD' : 'controls'}`;
+      if (state.hudActive) {
+        for (const update of hudBindings) update();
+        find('#hud-range').textContent = `${formatScale(state.near * state.ship.scale)}–${formatScale(state.far * state.ship.scale)}`;
+        const bar = find('.hud-range-bar');
+        bar.style.setProperty('--range-start', `${state.near / 8 * 100}%`);
+        bar.style.setProperty('--range-width', `${(state.far - state.near) / 8 * 100}%`);
+        bar.style.setProperty('--range-focus', `${Math.min(100, Math.max(0, state.focus / 8 * 100))}%`);
+        find('#hud-focus').textContent = formatScale(state.focus * state.ship.scale);
+        find('#hud-iso').textContent = Math.round(100 * 2 ** state.exposure).toLocaleString();
+        find('#hud-fov').textContent = `${Math.round(state.fov)}°`;
+        find('#hud-time').textContent = state.time.toFixed(4);
+        find('#hud-mode').textContent = state.introActive ? 'Movie · resets each clip' : 'Manual flight';
+        find('#hud-space-action').textContent = state.introActive ? 'Take control' : 'Play / pause';
+      }
       replayIntro.hidden = state.introActive || !state.isCore;
       replayIntro.disabled = !hasFlow();
       controlsToggle.setAttribute('aria-expanded', String(!state.introActive && !panel.hidden));

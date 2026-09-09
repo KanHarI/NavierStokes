@@ -624,28 +624,37 @@ export class Renderer {
   }
 
   /** Verify the rendered Gaussian footprint, not just its analytic formula. */
-  auditGaussian(shutter = 0) {
+  auditGaussian(shutter = 0, useCurrentOptics = false) {
     const gl = this.gl; const savedReductions = this.reductions;
-    const target = this.target(64, 64);
-    this.reductions = [32, 16, 8, 4, 2, 1].map(n => this.target(n, n, true));
+    const size = useCurrentOptics ? 256 : 64;
+    const target = this.target(size, size);
+    this.reductions = (useCurrentOptics ? [128, 64, 32, 16, 8, 4, 2, 1] : [32, 16, 8, 4, 2, 1]).map(n => this.target(n, n, true));
     const buffer = gl.createBuffer()!; const vao = gl.createVertexArray()!;
-    const cases: { distance: number; light: number }[] = [];
+    const cases: { distance: number; light: number; rmsRadius: number }[] = [];
     try {
       gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 16, 0); gl.vertexAttribDivisor(0, 1);
-      for (const distance of [1.2, 2, 2.8]) {
+      for (const distance of (useCurrentOptics ? [2, 3, 4.5] : [1.2, 2, 2.8])) {
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([2, 0, -distance, 10]), gl.STREAM_DRAW);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer); gl.viewport(0, 0, 64, 64);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer); gl.viewport(0, 0, size, size);
         gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
         const p = this.drawProgram; gl.useProgram(p.program); this.common(p);
         gl.uniform3f(this.uniform(p, 'uShip'), 2, 0, 0); gl.uniform4f(this.uniform(p, 'uOrientation'), 0, 0, 0, 1);
-        gl.uniform2f(this.uniform(p, 'uResolution'), 64, 64); gl.uniform2f(this.uniform(p, 'uShell'), 1, 3);
-        gl.uniform2f(this.uniform(p, 'uOpticalShell'), 1, 3);
-        this.f(p, 'uScale', 1); this.f(p, 'uFocus', 2); this.f(p, 'uBlur', 8); this.f(p, 'uFov', 1);
+        gl.uniform2f(this.uniform(p, 'uResolution'), size, size); gl.uniform2f(this.uniform(p, 'uShell'), 1, 3);
+        if (!useCurrentOptics) gl.uniform2f(this.uniform(p, 'uOpticalShell'), 1, 3);
+        this.f(p, 'uScale', 1); this.f(p, 'uFocus', useCurrentOptics ? this.state.focus : 2);
+        this.f(p, 'uBlur', useCurrentOptics ? this.state.blur : 8); this.f(p, 'uFov', 1);
         this.f(p, 'uExposure', 0); this.f(p, 'uBrightness', 1); this.i(p, 'uColor', 0);
         this.f(p, 'uShutter', shutter);
         gl.disable(gl.BLEND); gl.bindVertexArray(vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 1);
-        cases.push({ distance, light: this.measure(target)[0] });
+        const pixels = new Float32Array(size * size * 4);
+        gl.readPixels(0, 0, size, size, gl.RGBA, gl.FLOAT, pixels);
+        let energy = 0, moment = 0;
+        for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+          const light = pixels[(y * size + x) * 4];
+          energy += light; moment += light * ((x + .5 - size / 2) ** 2 + (y + .5 - size / 2) ** 2);
+        }
+        cases.push({ distance, light: this.measure(target)[0], rmsRadius: Math.sqrt(moment / energy) });
       }
       return { cases, expectedLight: 12, glError: gl.getError() };
     } finally {

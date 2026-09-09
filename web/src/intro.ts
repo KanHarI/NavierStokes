@@ -2,7 +2,8 @@ import type { Quat, Vec3 } from './types';
 
 export const INTRO_MIN_SECONDS = 5;
 export const INTRO_MAX_SECONDS = 30;
-const FADE_SECONDS = .35;
+export const INTRO_FADE_SECONDS = .35;
+const FADE_SECONDS = INTRO_FADE_SECONDS;
 
 /** Integer-seeded randomness keeps every generated shot reproducible for audits. */
 function randomSource(seed: number) {
@@ -64,9 +65,10 @@ function unitQuaternion(q: Quat): Quat { const n=Math.hypot(...q); return q.map(
 export function sampleIntroClip(config: ReturnType<typeof generateIntroClip>, local: number,
   timeMin = 0, timeMax = .9999) {
   const duration = config.duration;
-  const phase = Math.max(0, Math.min(1, local/duration)), ease = smooth(phase);
+  const phase = Math.max(0, Math.min(1, local/duration));
+  const viewPhase = Math.min(phase, (duration-FADE_SECONDS)/duration), ease = smooth(viewPhase);
   const startTime = Math.max(timeMin, Math.min(timeMax, 1-(1-timeMin)*10**(-config.decades)));
-  const playSeconds = duration-1;
+  const playSeconds = duration-2*FADE_SECONDS;
   const play = Math.max(0, Math.min(1, (local-FADE_SECONDS)/playSeconds));
   const time = startTime+(timeMax-startTime)*play;
   const remainingFraction = (1-time)/(1-startTime);
@@ -80,7 +82,7 @@ export function sampleIntroClip(config: ReturnType<typeof generateIntroClip>, lo
   const distance = focus*scale;
   const depth = 1+config.depthDrift*ease;
   const azimuth = radians(config.azimuth+config.orbit*(ease-.5));
-  const elevation = radians(Math.max(-85, Math.min(85, config.elevation+config.lift*Math.sin(phase*Math.PI))));
+  const elevation = radians(Math.max(-85, Math.min(85, config.elevation+config.lift*Math.sin(viewPhase*Math.PI))));
   const position: Vec3 = [distance*Math.cos(elevation)*Math.cos(azimuth), distance*Math.cos(elevation)*Math.sin(azimuth), distance*Math.sin(elevation)];
   const axial = Math.abs(config.elevation) > 55;
   const title = axial ? 'Inside the accelerating swirl.' : 'A core drawn ever narrower.';

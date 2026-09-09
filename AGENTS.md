@@ -2,7 +2,7 @@
 
 ## Current scope
 
-The user has authorized implementation and subagents. Read README.md and IMPLEMENTATION_PLAN.md for the design and docs/mathematics.md for the current scientific scope. Proceed with ordinary implementation, fixes, and validation within the agreed scope without repeating the earlier planning approval question. A hosted application has not yet been deployed.
+The user has authorized implementation and subagents. Read README.md and IMPLEMENTATION_PLAN.md for the design and docs/mathematics.md for the current scientific scope. Proceed with ordinary implementation, fixes, and validation within the agreed scope without repeating the earlier planning approval question. GitHub Pages publishes main automatically after the production build and scientific checks. The requested custom domain remains pending DNS setup.
 
 Keep planned features distinct from implemented behavior. Preserve the distinction between a leading-flow approximation and the full corrected mathematical construction.
 

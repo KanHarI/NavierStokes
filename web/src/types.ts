@@ -5,6 +5,8 @@ export interface AppState {
   isCore: boolean;
   fieldKind: 'core' | 'exterior' | 'extended';
   introActive: boolean;
+  hudActive: boolean;
+  screensaver: boolean;
   introShot: number;
   introProgress: number;
   introDuration: number;
@@ -14,6 +16,7 @@ export interface AppState {
   introScaleRatio: number;
   ship: { position: Vec3; orientation: Quat; scale: number };
   movementSpeed: number;
+  boosting: boolean;
   pointerLocked: boolean;
   near: number;
   far: number;
@@ -54,6 +57,8 @@ export interface Actions {
   reset(): void;
   reseed(): void;
   scrub(time: number): void;
+  lookAround(): void;
+  startScreensaver(): void;
   enterFlight(): void;
 }
 
@@ -63,10 +68,10 @@ export function initialState(): AppState {
   const isCore = fieldKind !== 'exterior';
   return {
     isCore, fieldKind,
-    introActive: false, introShot: 0, introProgress: 0, introDuration: 0, introTitle: '', introCaption: '',
+    introActive: false, hudActive: false, screensaver: false, introShot: 0, introProgress: 0, introDuration: 0, introTitle: '', introCaption: '',
     introSpeedRatio: 1, introScaleRatio: 1,
     ship: { position: isCore ? [0, -.6, .15] : [0, -2.4, 0.6], orientation: [0.627,-0.0,0.0,0.779], scale: isCore ? .25 : 1 },
-    movementSpeed: 0.5, pointerLocked: false,
+    movementSpeed: 0.5, boosting: false, pointerLocked: false,
     near: 2, far: 4, focus: 3, shellFade: 1, shellBokeh: 24, fov: 65, blur: 6, exposure: 0,
     density: 500, densityCompensation: false, colorMode: 'white',
     distanceSaturation: false, renderScale: 1,

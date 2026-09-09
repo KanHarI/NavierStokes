@@ -5,10 +5,11 @@ import { createNavigation } from './navigation';
 import { loadField, sampleVelocity } from './field';
 import { advanceTime } from './time';
 import { Renderer } from './renderer';
-import { createIntroDirector } from './intro';
+import { createIntroDirector, INTRO_FADE_SECONDS } from './intro';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#space')!;
 const container = document.querySelector<HTMLElement>('#interface')!;
+canvas.tabIndex = -1;
 const state = initialState();
 const navigation = createNavigation(canvas, state);
 let renderer: Renderer | undefined;
@@ -21,6 +22,14 @@ let introDirector = createIntroDirector(0);
 let introElapsed = 0;
 let introSegment = -1;
 let introPriming = false;
+let introClipStart = 0;
+let introFading = false;
+let introBlack = false;
+let introFadeElapsed = 0;
+let firstFrameReady = false;
+const startup = { dataStart: 0, dataReady: 0, rendererReady: 0, firstFrameReady: 0 };
+const startupLoader = document.querySelector<HTMLElement>('#startup-loader');
+const startupStage = document.querySelector<HTMLElement>('#startup-stage');
 
 function stopIntro(updateUI = true) {
   if (!state.introActive) return;
@@ -37,18 +46,21 @@ function stopIntro(updateUI = true) {
 
 function startIntro() {
   if (!renderer || !state.flowAvailable || !state.isCore) return;
+  navigation.resetIntroLook();
+  state.hudActive = false;
   state.introActive = true; state.playing = true;
   state.independentDust = false; state.colorMode = 'white'; state.distanceSaturation = false;
   state.timeMode = 'linear'; state.density = 70; state.exposure = 2.5;
   state.densityCompensation = false;
   introElapsed = 0; introSegment = -1; introPriming = true; reseedAt = -1;
+  introClipStart = 0; introFading = false; introBlack = false; introFadeElapsed = 0;
   introDirector = createIntroDirector(crypto.getRandomValues(new Uint32Array(1))[0]);
   const first = introDirector.sample(0, state.timeMin, state.timeMax);
   state.introShot = 0; state.introProgress = 0; state.introDuration = first.duration;
   state.introTitle = first.title; state.introCaption = first.caption;
   canvas.style.transition = 'none'; canvas.style.opacity = '0';
   lastFrame = performance.now(); ui.update();
-  document.querySelector<HTMLButtonElement>('#explore-flow')?.focus({ preventScroll: true });
+  canvas.focus({ preventScroll: true });
 }
 
 function reseed() {
@@ -60,6 +72,36 @@ function reseed() {
   reseedAt = performance.now() + 150;
 }
 
+function lookAround() {
+  if (typeof canvas.requestPointerLock !== 'function') {
+    state.status = 'Pointer capture is unavailable in this browser.'; ui.update(); return;
+  }
+  state.hudActive = true; ui.update();
+  canvas.focus({ preventScroll: true });
+  const request = canvas.requestPointerLock();
+  if (request && typeof request.catch === 'function') request.catch(() => {
+    state.hudActive = false; state.status = 'Click the view again to enable mouse look.'; ui.update();
+  });
+}
+
+function enterFlight() { stopIntro(); lookAround(); }
+
+function startScreensaver() {
+  if (!state.flowAvailable || !state.isCore) return;
+  if (!state.introActive) startIntro();
+  state.hudActive = false; state.screensaver = true;
+  navigation.resetIntroLook(); ui.update();
+  canvas.focus({ preventScroll: true });
+  if (document.pointerLockElement) document.exitPointerLock();
+  // The same text-free presentation also works in the browser viewport when
+  // fullscreen is unavailable or declined by the browser.
+  document.documentElement.requestFullscreen?.().catch(() => {});
+}
+function stopScreensaver() {
+  state.screensaver = false; ui.update();
+  if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+}
+
 const ui = createUI(container, state, {
   startIntro, stopIntro,
   reset() { navigation.reset(); reseed(); },
@@ -69,24 +111,17 @@ const ui = createUI(container, state, {
     state.time = Math.max(state.timeMin, Math.min(state.timeMax, time));
     state.playing = false; reseed();
   },
-  enterFlight() {
-    stopIntro();
-    if (typeof canvas.requestPointerLock !== 'function') {
-      state.status = 'Pointer capture is unavailable in this browser.'; ui.update(); return;
-    }
-    const request = canvas.requestPointerLock();
-    if (request && typeof request.catch === 'function') request.catch(() => {
-      state.status = 'Click the view again to enable mouse flight.'; ui.update();
-    });
-  },
+  enterFlight, lookAround, startScreensaver,
 });
 
-const debug = { state, renderer, sampleVelocity: (p: number[], time = state.time) => renderer ? sampleVelocity(renderer.field, p, time) : null };
+const debug = { state, renderer, startup, sampleVelocity: (p: number[], time = state.time) => renderer ? sampleVelocity(renderer.field, p, time) : null };
 if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
   Object.assign(window, { __observatory: debug });
 }
 
 function showError(error: unknown) {
+  state.screensaver = false;
+  if (startupLoader) startupLoader.hidden = true;
   state.introActive = false; canvas.style.opacity = '1';
   state.loading = false; state.playing = false; state.flowAvailable = false;
   state.status = error instanceof Error ? error.message : String(error);
@@ -98,7 +133,11 @@ function showError(error: unknown) {
 
 async function start() {
   try {
+    startup.dataStart = performance.now();
+    if (startupStage) startupStage.textContent = 'Loading flow data…';
     const field = await loadField(state.fieldKind);
+    startup.dataReady = performance.now();
+    if (startupStage) startupStage.textContent = 'Preparing the view…';
     if (disposed) return;
     state.timeMin = field.manifest.time.start; state.timeMax = field.manifest.time.end;
     state.time = state.timeMin;
@@ -106,6 +145,7 @@ async function start() {
     state.modelDescription = state.fieldKind === 'extended' ? `${field.manifest.model.scope}. Flow is defined around the core and becomes stationary beyond radius 8. Dust remains visible where velocity is zero. The full correction construction is not reconstructed.` : state.isCore ? `${field.manifest.model.scope}. This finite local profile has inward flow and axial stretching. Global matching and the full correction construction are not reconstructed. Use Reset view after scrubbing to frame the smaller core. Empty regions are outside the computed patch.` : `${field.manifest.model.scope}. This diagnostic annulus is not a reconstructed blowup. The central core is outside the dataset; empty regions are not stationary fluid.`;
     state.maxSpeed = state.isCore ? 100 : Math.hypot(...sampleVelocity(field, [field.manifest.domain.radialMin, 0, 0], state.timeMax)!);
     renderer = new Renderer(canvas, state, field); debug.renderer = renderer;
+    startup.rendererReady = performance.now();
     state.flowAvailable = true; state.loading = false;
     state.status = 'Field ready · press play or enter flight';
     if (state.fieldKind === 'extended' && new URLSearchParams(location.search).get('intro') !== '0'
@@ -116,27 +156,58 @@ async function start() {
 
 function frame(now: number) {
   if (disposed || !renderer) return;
+  // A queued RAF timestamp can predate the preceding GPU completion barrier.
+  // Use entry time consistently with that barrier so its stall cannot be
+  // counted again as elapsed fade time on the next frame.
+  now = performance.now();
   const elapsed = (now - lastFrame) / 1000; lastFrame = now;
   const dt = document.hidden ? 0 : Math.min(.05, Math.max(0, elapsed));
   if (elapsed > 0 && elapsed < 1) state.fps = state.fps ? state.fps * .9 + .1 / elapsed : 1 / elapsed;
   const clockElapsed = document.hidden ? 0 : Math.max(0, elapsed);
+  // The expensive endpoint frame must finish before the fade clock starts.
+  // Fade the retained canvas image: do not reproject or reseed its dust, remove
+  // its motion exposure, or let a slow GPU skip straight into the next clip.
+  if (state.introActive && introFading) {
+    introFadeElapsed = Math.min(INTRO_FADE_SECONDS, introFadeElapsed+clockElapsed);
+    const t = introFadeElapsed/INTRO_FADE_SECONDS;
+    canvas.style.opacity = String(1-t*t*t*(10+t*(-15+6*t)));
+    state.introProgress = (state.introDuration-INTRO_FADE_SECONDS+introFadeElapsed)/state.introDuration;
+    if (introFadeElapsed >= INTRO_FADE_SECONDS) {
+      canvas.style.opacity = '0'; introFading = false; introBlack = true;
+    }
+    if (now-lastUI > 100) { ui.update(); lastUI = now; }
+    frameID = requestAnimationFrame(frame);
+    return; // One fully black presentation precedes the next population reset.
+  }
   let timeDelta: number, transportDelta: number;
+  let introAtEndpoint = false;
   if (state.introActive) {
-    introElapsed += clockElapsed;
+    if (introBlack) {
+      introClipStart += state.introDuration; introElapsed = introClipStart;
+      introBlack = false; introPriming = true;
+    } else {
+      const endpoint = introClipStart+state.introDuration-INTRO_FADE_SECONDS;
+      introElapsed = Math.min(endpoint, introElapsed+clockElapsed);
+      introAtEndpoint = introElapsed >= endpoint;
+    }
     const shot = introDirector.sample(introElapsed, state.timeMin, state.timeMax);
+    if (introAtEndpoint) shot.time = state.timeMax;
     const segment = shot.shot, restart = segment !== introSegment;
     timeDelta = restart ? 0 : Math.max(0, shot.time-state.time); transportDelta = timeDelta;
-    if (restart) { renderer.reseed(); introSegment = segment; state.density = shot.density; }
+    if (restart) { renderer.reseed(); navigation.resetIntroLook(); introSegment = segment; state.density = shot.density; }
     state.time = shot.time; state.playing = shot.time < state.timeMax;
     state.introShot = shot.shot; state.introProgress = shot.phase;
     state.introDuration = shot.duration;
     state.introTitle = shot.title; state.introCaption = shot.caption;
     state.introScaleRatio = Math.sqrt((1-shot.time)/(1-state.timeMin));
     state.introSpeedRatio = ((1-state.timeMin)/(1-shot.time))**(.5+renderer.field.manifest.model.h);
-    state.ship.position = shot.position; state.ship.orientation = shot.orientation; state.ship.scale = shot.scale;
-    state.near = shot.near; state.far = shot.far; state.focus = shot.focus; state.shellFade = shot.shellFade;
-    state.blur = shot.blur; state.shellBokeh = shot.shellBokeh; state.fov = shot.fov;
-    state.exposure = shot.exposure;
+    navigation.update(dt);
+    const pose = navigation.applyIntroPose({ position: shot.position, orientation: shot.orientation, scale: shot.scale });
+    state.ship.position = pose.position; state.ship.orientation = pose.orientation; state.ship.scale = pose.scale;
+    const optics = navigation.applyIntroOptics(shot);
+    state.near = optics.near; state.far = optics.far; state.focus = optics.focus; state.shellFade = optics.shellFade;
+    state.blur = optics.blur; state.shellBokeh = optics.shellBokeh; state.fov = optics.fov;
+    state.exposure = optics.exposure;
     state.playbackSpeed = shot.playbackSpeed;
     canvas.style.opacity = String(shot.opacity);
   } else {
@@ -159,9 +230,18 @@ function frame(now: number) {
   }
   try { renderer.render(dt, transportDelta, timeDelta); }
   catch (error) { renderer.dispose(); showError(error); return; }
+  if (!firstFrameReady || (state.introActive && (introPriming || introAtEndpoint))) renderer.finishFrame();
+  if (!firstFrameReady) {
+    firstFrameReady = true; startup.firstFrameReady = performance.now();
+    if (startupLoader) startupLoader.hidden = true;
+  }
   if (state.introActive && introPriming) {
-    renderer.finishFrame(); introPriming = false;
-    introElapsed = 0; lastFrame = performance.now();
+    introPriming = false;
+    introElapsed = introClipStart; lastFrame = performance.now();
+  }
+  if (state.introActive && introAtEndpoint) {
+    introFading = true; introFadeElapsed = 0;
+    lastFrame = performance.now();
   }
   if (now - lastUI > 100) { ui.update(); lastUI = now; }
   frameID = requestAnimationFrame(frame);
@@ -178,16 +258,42 @@ document.addEventListener('visibilitychange', onVisibility);
 const onManualInput = (event: Event) => {
   if (state.introActive && event.target instanceof Element && event.target.closest('input, select')) stopIntro(event.type !== 'input');
 };
+function returnToAuto() {
+  state.hudActive = false;
+  if (!state.introActive && state.isCore) startIntro();
+  else { navigation.resetIntroLook(); ui.update(); canvas.focus({ preventScroll: true }); }
+}
+let wasCaptured = false;
+const onCaptureChange = () => {
+  if (disposed) return;
+  const captured = document.pointerLockElement === canvas;
+  // Native Escape may be consumed by the browser before our key handler.
+  // Releasing capture must still return manual flight to the movie.
+  if (wasCaptured && !captured) returnToAuto();
+  wasCaptured = captured;
+};
+const onFullscreenChange = () => {
+  if (!document.fullscreenElement && state.screensaver) { state.screensaver = false; ui.update(); }
+};
 const onIntroKey = (event: KeyboardEvent) => {
-  if (!state.introActive || event.ctrlKey || event.metaKey || event.altKey) return;
-  if (event.code === 'Space' && event.target instanceof Element && event.target.closest('button, input, select, textarea, summary, a')) return;
-  if (event.code === 'Escape' || event.code === 'Space') {
-    event.preventDefault(); event.stopImmediatePropagation(); stopIntro();
+  if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+  if (event.code === 'Escape') {
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (state.screensaver) { stopScreensaver(); return; }
+    if (state.pointerLocked || document.pointerLockElement === canvas) document.exitPointerLock();
+    returnToAuto();
+    return;
   }
+  if (!state.introActive || event.code !== 'Space') return;
+  if (!state.pointerLocked && event.target instanceof Element
+      && event.target.closest('button, input, select, textarea, summary, a, [contenteditable="true"]')) return;
+  event.preventDefault(); event.stopImmediatePropagation(); enterFlight();
 };
 document.addEventListener('pointerdown', onManualInput, true);
 document.addEventListener('input', onManualInput, true);
 document.addEventListener('keydown', onIntroKey, true);
+document.addEventListener('pointerlockchange', onCaptureChange);
+document.addEventListener('fullscreenchange', onFullscreenChange);
 void start();
 
 if (import.meta.hot) import.meta.hot.dispose(() => {
@@ -195,4 +301,6 @@ if (import.meta.hot) import.meta.hot.dispose(() => {
   canvas.removeEventListener('webglcontextlost', onContextLost); document.removeEventListener('visibilitychange', onVisibility);
   document.removeEventListener('pointerdown', onManualInput, true); document.removeEventListener('input', onManualInput, true);
   document.removeEventListener('keydown', onIntroKey, true);
+  document.removeEventListener('pointerlockchange', onCaptureChange);
+  document.removeEventListener('fullscreenchange', onFullscreenChange);
 });

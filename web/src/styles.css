@@ -21,6 +21,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 button:disabled { cursor: default; opacity: .4; }
 canvas { display: block; position: fixed; inset: 0; width: 100%; height: 100%; }
 .cockpit { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+.cockpit.is-screensaver { visibility: hidden; }
 .cockpit button, .cockpit input, .cockpit select, .cockpit summary, .cockpit a, .control-panel { pointer-events: auto; }
 .mission-header {
   position: absolute; top: 28px; left: 30px; right: 30px;
@@ -140,7 +141,10 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
   display: block; height: 100%; background: #deded9; transform-origin: left;
   transform: scaleX(var(--shot-progress, 0));
 }
-.intro-actions { display: flex; align-items: center; gap: 20px; }
+.intro-look-prompt { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.intro-look-prompt[hidden] { display: none; }
+.intro-look-prompt button { white-space: nowrap; }
+.intro-look-prompt #take-control { border-color: transparent; background: rgba(0, 0, 0, .35); color: #b1b7ae; }
 .explore-button {
   display: inline-flex; align-items: center; gap: 32px; padding: 14px 18px;
   border: 1px solid rgba(255, 255, 255, .58); border-radius: 2px;
@@ -149,7 +153,11 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
 }
 .explore-button:hover { border-color: #fff; background: rgba(255, 255, 255, .14); }
 .explore-button span { font-size: 17px; line-height: .8; color: #bfc1bc; }
-.intro-hint { color: #858986; font-size: 10px; letter-spacing: .4px; }
+.intro-hint { color: #858986; font-size: 10px; letter-spacing: .2px; line-height: 1.6; max-width: 390px; margin: 12px 0 0; }
+.intro-key-hint { color: #c0c5bc; font-size: 10px; letter-spacing: .5px; line-height: 1.6; margin: 8px 0 0; }
+.intro-more-keys { color: #a5ada1; font-size: 9px; line-height: 1.6; margin: 4px 0 0; }
+.intro-look-prompt .intro-more-keys { text-align: center; margin: 0; padding: 4px 10px; background: rgba(0, 0, 0, .4); }
+.intro-look-prompt .intro-key-hint { margin: 0; padding: 4px 10px; background: rgba(0, 0, 0, .4); white-space: nowrap; }
 .is-intro { --accent: #d9ddd8; --muted: #969b96; --line: rgba(220, 224, 219, .18); }
 .is-intro .control-panel, .is-intro .help-card, .is-intro .telemetry,
 .is-intro .timeline-bar, .is-intro .reticle, .is-intro .flight-prompt,
@@ -168,6 +176,41 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
 .is-intro .interface-toggle { right: 50px; bottom: 48px; }
 .is-interface-hidden .interface-toggle { opacity: .65; }
 .is-interface-hidden .interface-toggle:hover, .is-interface-hidden .interface-toggle:focus-visible { opacity: 1; }
+.flight-hud[hidden], #take-control[hidden] { display: none; }
+.flight-hud { position: absolute; inset: 24px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; color: #e2e2e2; }
+.hud-instruments, .hud-controls { padding: 16px; border: 1px solid rgba(255, 255, 255, .17); background: rgba(0, 0, 0, .7); backdrop-filter: blur(12px); border-radius: 3px; min-height: 0; max-height: calc(100dvh - 88px); overflow: auto; scrollbar-width: thin; pointer-events: auto; }
+.hud-instruments { width: 345px; }
+.hud-instruments:focus-visible { outline: 1px solid #ddd; outline-offset: 3px; }
+.hud-group { margin-top: 14px; border-top: 1px solid rgba(255, 255, 255, .13); padding-top: 11px; }
+.hud-group h3 { margin: 0 0 10px; color: #aaa; font-size: 9px; font-weight: 500; letter-spacing: 1px; text-transform: uppercase; }
+.hud-readouts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px 12px; margin: 0; }
+.hud-readouts > div { min-width: 0; }
+.hud-readouts dt { color: #999; font-size: 8px; line-height: 1.5; margin-bottom: 4px; }
+.hud-readouts dd { margin: 0; color: #ddd; font-size: 10px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.hud-reading-wide { grid-column: 1 / -1; }
+.hud-meter { display: block; height: 2px; margin-top: 5px; background: linear-gradient(to right, #ccc calc(var(--level, 0) * 100%), #333 0); }
+.hud-heading, .hud-control-heading { font-size: 9px; letter-spacing: 1.3px; color: #a5a5a5; }
+.hud-heading { display: flex; justify-content: space-between; gap: 10px; }
+.hud-heading output { color: #eee; font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.hud-range-bar { position: relative; height: 3px; margin: 14px 0 16px; background: rgba(255, 255, 255, .12); }
+.hud-range-bar span { position: absolute; height: 100%; left: var(--range-start); width: var(--range-width); background: #ccc; }
+.hud-range-bar i { position: absolute; top: -3px; height: 9px; width: 1px; left: var(--range-focus); background: #fff; }
+.hud-gauges { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 0; }
+.hud-gauges dt { color: #999; font-size: 9px; margin-bottom: 6px; }
+.hud-gauges dd { margin: 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+.hud-controls { width: 345px; }
+.hud-control-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px; }
+.hud-control-heading span { font-size: 8px; letter-spacing: 0; }
+.hud-key-list { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 16px; margin: 15px 0 0; }
+.hud-key-list > div { display: flex; align-items: baseline; gap: 9px; font-size: 10px; }
+.hud-key-list dt { min-width: 45px; color: #e2e2e2; font-family: ui-monospace, monospace; }
+.hud-key-list dd { margin: 0; color: #aaa; }
+.hud-controls #take-control { margin-top: 14px; color: #ddd; background: transparent; border-color: rgba(255, 255, 255, .2); }
+.cockpit.is-hud .mission-header, .cockpit.is-hud .intro-card, .cockpit.is-hud .control-panel,
+.cockpit.is-hud .help-card, .cockpit.is-hud .telemetry, .cockpit.is-hud .timeline-bar,
+.cockpit.is-hud .flight-prompt { display: none; }
+.cockpit.is-hud .reticle { display: block; }
+.cockpit.is-hud .interface-toggle { top: 24px; right: 24px; bottom: auto; }
 @media (max-width: 760px) {
   .mission-header { top: 20px; left: 20px; right: 20px; gap: 12px; }
   .wordmark { font-size: 15px; }
@@ -185,6 +228,10 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
   .intro-title { max-width: 360px; }
   .interface-toggle { right: 20px; }
   .is-intro .interface-toggle { right: 25px; bottom: 32px; }
+  .flight-hud { inset: 66px 16px 16px; display: grid; grid-template-columns: minmax(0, 345px); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; justify-content: start; gap: 12px; }
+  .hud-controls, .hud-instruments { width: 100%; max-height: 100%; padding: 12px; }
+  .hud-key-list { gap: 7px 12px; margin-top: 11px; }
+  .cockpit.is-hud .interface-toggle { top: 16px; right: 16px; }
 }
 @media (max-width: 480px) {
   .header-actions { flex-direction: column; align-items: flex-end; }
@@ -192,12 +239,22 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
   .telemetry { gap: 14px; }
   .telemetry .performance-instrument { display: none; }
   .status-readout { display: none; }
-  .intro-hint { display: none; }
+  .intro-look-prompt .explore-button { gap: 15px; padding: 12px; }
+  .intro-hint { font-size: 9px; }
   .intro-kicker { font-size: 8px; letter-spacing: 1.5px; gap: 10px; }
   .intro-title { margin-top: 14px; }
   .is-intro .scope-badge { max-width: 215px; font-size: 8px; }
   .is-intro .wordmark { font-size: 14px; }
   .is-intro .interface-toggle { bottom: auto; top: 70px; }
+  .intro-card { bottom: 20px; }
+  .intro-title { font-size: 27px; margin: 8px 0; letter-spacing: -.7px; }
+  .intro-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 10px; line-height: 1.5; }
+  .intro-measures { font-size: 9px; margin-top: 7px; gap: 3px 10px; }
+  .intro-progress { margin: 12px 0; }
+  .intro-look-prompt { gap: 8px; }
+  .is-intro:not(.is-captured) .intro-card .intro-key-hint,
+  .is-intro:not(.is-captured) .intro-card .intro-more-keys,
+  .is-intro:not(.is-captured) .intro-card .intro-hint { display: none; }
 }
 @media (max-height: 480px) {
   .intro-card { bottom: 22px; }

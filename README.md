@@ -13,9 +13,11 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite (normally `http://127.0.0.1:5173/`). The default arrival plays an endless **procedurally generated white-light sequence**. Every clip lasts a random **5–30 seconds**, with new camera angles, orbit direction, roll, magnification, perspective, field of view, shell depth, focus, Gaussian bokeh, ISO, and dust density. These settings are coupled to keep the contracting core in view. The first clip shows the full computed interval; later clips choose continuously varying magnified time windows. Every clip advances linearly to t=0.9999, holds briefly, then fades to black before restarting with fresh dust. This replaces the fixed four-view sequence and progressively slower repeats.
+Open the local URL printed by Vite (normally `http://127.0.0.1:5173/`). The default arrival plays an endless **procedurally generated white-light sequence**. Every clip lasts a random **5–30 seconds**, with new camera angles, orbit direction, roll, magnification, perspective, field of view, shell depth, focus, Gaussian bokeh, ISO, and dust density. These settings are coupled to keep the contracting core in view. The first clip shows the full computed interval; later clips choose continuously varying magnified time windows. Every clip advances linearly to t=0.9999, then fades its final rendered image to black before restarting with fresh dust. The fade begins after the GPU finishes that frame; a slow final step cannot skip straight into the next population. This replaces the fixed four-view sequence and progressively slower repeats.
 
-The current view number, duration, physical time, core width, and axis speed remain visible. **Hide controls** clears the cockpit overlays without interrupting playback; **Show controls** restores them. **Explore the flow**, **Controls**, or Escape hands over immediately. **Replay sequence** generates a fresh sequence. Reduced-motion users and `?intro=0` start paused. Normalized motion traces and depth-of-field effects remain white; the camera eases near the endpoint while the physical core continues narrowing.
+Arrival shows the clip explanation and a centered **Click to look around** button. After that click, a monochrome game HUD replaces the descriptive text with radar range, focus, ISO, field of view, time, and a compact control legend. Key hints appear only in the HUD. **Hide controls** clears the cockpit overlays without interrupting playback; **Show controls** restores them. **Click to look around** enables mouse steering while the generated flight path, optics, time, and clip changes continue. WASD moves, R/F moves up/down, Q/E rolls, and Z/X changes radar range without changing flight scale. Use −/+ for brightness, [/] for field of view, 1/2 for radar depth, 3/4 for focus, and 5/6 for bokeh. These adjustments are relative to the generated camera; every new clip resets the user adjustments to its generated starting view. **Press Space to take control** switches to manual flight at the current view and pauses the field; Space then controls play/pause. Escape releases mouse capture and returns to automatic viewing in one press. **Controls** also hands over to manual exploration. **Replay sequence** generates a fresh sequence. Reduced-motion users and `?intro=0` start paused. Normalized motion traces and depth-of-field effects remain white; the camera eases near the endpoint while the physical core continues narrowing.
+
+**Screensaver** runs the procedural movies fullscreen with all page text and controls hidden. Escape exits it. If fullscreen is unavailable, the text-free scene fills the browser viewport.
 
 The interactive viewer opens on **Core & surroundings**. The field selector also offers the previous isolated core (`?field=core`) and heat-exterior (`?field=exterior`) checkpoints. Time advances **linearly by default**, ending at `t=0.9999`. In **Time & transport**, choose linear or logarithmic progression and adjust **Time speed** from 0.001× to 10× (decades per second in logarithmic mode). Logarithmic progression slows the approach for inspection; switching modes preserves the current time. After scrubbing, **Reset view** frames the contracted core at that time; ordinary flight and scale remain independent of the flow. Press play to run synchronized tracers, or enable **Independent dust transport** to see movement through a frozen field. Use **Click to fly**, then Escape to return to the controls.
 
@@ -29,7 +31,9 @@ npx playwright install chromium
 npm run test:browser      # WebGL, controls, integrity, and light tests
 ```
 
-`npm run preview` serves the production build locally. The application uses relative asset URLs so the static build can be served under a repository subpath. A hosted website has not yet been deployed.
+A black-and-white snow loader is part of the initial HTML, so it appears before JavaScript runs. It stays visible through field loading and first-frame GPU preparation.
+
+`npm run preview` serves the production build locally. The application uses relative asset URLs so the static build can be served under a repository subpath. GitHub Pages publishes `main` automatically after the production build and scientific checks: https://kanhari.github.io/NavierStokes/ . The requested custom domain, `navierstokes.kanhar.art`, is pending DNS setup.
 
 ## What is implemented
 
@@ -69,7 +73,7 @@ We will compute and explore a finite, resolved interval before the singular time
 
 Only dust in the observation shell, its transition bands, and a hidden buffer is simulated. The default invisible recycling limits are 0.75× and 5.25× scale. Ordinary replacement particles are born at zero spatial opacity. In the default field, incoming samples are weighted by fluid flux through the shell, relative to the translating or scaling observer; outgoing invisible guard particles are retired. Existing stationary dust stays in place. This avoids filling the reserve with particles that will never enter the view. The older isolated checkpoints retain their earlier guard sampler. Initial loading, explicit reseeding, and density increases use a temporal fade; incoming existing dust uses the continuous spatial fade. The fluid field stays consistent, but revisiting a location does not guarantee seeing the same individual tracers.
 
-### Proposed controls
+### Keyboard controls
 
 | Input | Action |
 | --- | --- |
@@ -78,14 +82,19 @@ Only dust in the observation shell, its transition bands, and a hidden buffer is
 | A / D | Strafe left / right |
 | R / F | Local up / down |
 | Q / E | Roll left / right |
-| Z / X | Shrink / enlarge |
+| Z / X | Decrease / increase radar range |
 | Shift | Temporary movement boost |
-| Space | Play / pause |
-| Escape | Release mouse and interact with the interface |
+| − / + | Decrease / increase ISO brightness |
+| [ / ] | Narrow / widen the field of view |
+| 1 / 2 | Narrow / widen shell thickness |
+| 3 / 4 | Move focus nearer / farther |
+| 5 / 6 | Decrease / increase defocus and boundary bokeh together |
+| Space | Take manual control during movies; otherwise play / pause |
+| Escape | Release mouse and return to the procedural movie |
 
 Controls are provisional and will be tuned during use. Position, orientation, and positive observation scale are independent state. Movement uses the ship's local axes; scaling is multiplicative. Changing observation scale initially keeps the ship's position fixed and scales its travel speed and observation distances.
 
-All optical controls will be available in a panel. Later coupling presets may coordinate scale, travel speed, viewing distance, and field of view, including a dolly zoom around a selected target.
+All optical controls are also available in the exploration panel. Later coupling presets may coordinate scale, travel speed, viewing distance, and field of view, including a dolly zoom around a selected target.
 
 ### Light and exposure
 
