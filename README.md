@@ -82,6 +82,8 @@ All optical controls will be available in a panel. Later coupling presets may co
 
 Each particle has a normalized screen-space Gaussian light profile. Distance from the spherical focus shell determines its width. Increasing blur spreads the light without increasing its integrated brightness.
 
+The FOV control is **horizontal**, initially 65°. The renderer accounts for the unequal solid angle covered by perspective pixels when converting tracer light to image brightness. This removes a camera-centered brightening of a uniform dust shell without changing particle positions or warping the perspective. Blur conserves each particle's light after that conversion. See [the projection calibration](docs/validation/projection.md).
+
 Particle light is accumulated in a linear HDR image. Manual ISO/exposure multiplies that light. When pixels exceed display capacity, their excess luminance is redistributed to nearby pixels as white light. This redistribution must conserve represented light within measured numerical tolerances; it is not an additive bloom effect.
 
 An image brighter than the capacity of the entire display cannot be preserved through spreading alone. Manual exposure remains under user control, and unresolved overexposure must be reported. Physical radiance conservation and subjective perceived brightness are different quantities.

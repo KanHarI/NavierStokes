@@ -81,13 +81,22 @@ void main(){
   sigma=min(sigma,64.);vSigma=sigma;
   vec2 corner=corners[gl_VertexID];vOffset=corner*3.*sigma;
   float tangent=tan(uFov*.5);
-  vec2 ndc=camera.xy/max(-camera.z,.0001)/vec2(tangent*uResolution.x/uResolution.y,tangent);
+  // uFov is horizontal. Keep the same focal scale on both image axes.
+  vec2 ndc=camera.xy/max(-camera.z,.0001)/vec2(tangent,tangent*uResolution.y/uResolution.x);
   gl_Position=vec4(ndc+vOffset*2./uResolution,0.,1.);
   float feather=min(.15,(uShell.y-uShell.x)*.15);
   float visibility=smoothstep(uShell.x,uShell.x+feather,d)*(1.-smoothstep(uShell.y-feather,uShell.y,d));
   float ageFade=smoothstep(0.,.35,aParticle.w);
-  vLight=12.*uBrightness*exp2(uExposure)*visibility*ageFade;
-  if(camera.z>=-.001||aParticle.w<0.||!valid(aParticle.xyz)){vLight=0.;gl_Position=vec4(2.,2.,0.,1.);}
+  // Uniform solid angle projects to cos(theta)^3 samples per pixel area.
+  // Convert each angular tracer's light to the image-area measure BEFORE
+  // Gaussian normalization. This keeps uniform angular dust exposure uniform.
+  // Cull the complete footprint first: grazing, offscreen rays must not create
+  // unbounded weights. The viewport plus its Gaussian guard band bounds gain.
+  bool visible=camera.z<-.001&&aParticle.w>=0.&&valid(aParticle.xyz)
+    &&all(lessThanEqual(abs(ndc),vec2(1.)+6.*sigma/uResolution));
+  float imageAreaWeight=visible?pow(d/max(-camera.z,.001),3.):0.;
+  vLight=12.*uBrightness*exp2(uExposure)*visibility*ageFade*imageAreaWeight;
+  if(!visible){vLight=0.;gl_Position=vec4(2.,2.,0.,1.);}
   vColor=vec3(1.);
   if(uColor==1){
     float speed=length(velocity(aParticle.xyz));float f=clamp(log(1.+speed)/log(1.+uColorMax),0.,1.);
@@ -434,6 +443,65 @@ export class Renderer {
       gl.deleteBuffer(buffer); gl.deleteVertexArray(vao); this.destroyTarget(target);
       this.reductions.forEach(t => this.destroyTarget(t)); this.reductions = savedReductions;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+  }
+
+  /** Isolate the camera response with a fixed, isotropic, valid-domain shell. */
+  auditProjection() {
+    const gl = this.gl; const width = 320; const height = 240; const count = 80_000;
+    const target = this.target(width, height);
+    const buffer = gl.createBuffer()!; const vao = gl.createVertexArray()!;
+    const particles = new Float32Array(count * 4);
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < count; i++) {
+      const z = 1 - 2 * (i + .5) / count;
+      const r = Math.sqrt(1 - z * z); const theta = i * goldenAngle;
+      // Ship [4,0,0], scale .5, shell radius 2: all samples are valid.
+      particles.set([4 + r * Math.cos(theta), r * Math.sin(theta), z, 10], i * 4);
+    }
+    const orientations = [
+      { name: 'forward', q: [0, 0, 0, 1] },
+      { name: 'yaw90', q: [0, Math.SQRT1_2, 0, Math.SQRT1_2] },
+      { name: 'tilted', q: [.25, -.4, .1, .875].map(x => x / Math.hypot(.25, -.4, .1, .875)) },
+    ];
+    const regions = [
+      ['center', 0, 0], ['left', -.65, 0], ['right', .65, 0],
+      ['top', 0, .65], ['bottom', 0, -.65],
+      ['upper-left', -.55, .55], ['lower-right', .55, -.55],
+    ] as const;
+    const cases = [];
+    try {
+      gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferData(gl.ARRAY_BUFFER, particles, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 16, 0); gl.vertexAttribDivisor(0, 1);
+      for (const fov of [65, 100]) for (const orientation of orientations) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer); gl.viewport(0, 0, width, height);
+        gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+        const p = this.drawProgram; gl.useProgram(p.program); this.common(p);
+        gl.uniform3f(this.uniform(p, 'uShip'), 4, 0, 0); gl.uniform4fv(this.uniform(p, 'uOrientation'), orientation.q);
+        gl.uniform2f(this.uniform(p, 'uResolution'), width, height); gl.uniform2f(this.uniform(p, 'uShell'), 1, 3);
+        this.f(p, 'uScale', .5); this.f(p, 'uFocus', 1); this.f(p, 'uBlur', 6);
+        this.f(p, 'uFov', fov * Math.PI / 180); this.f(p, 'uExposure', -6); this.f(p, 'uBrightness', 1); this.i(p, 'uColor', 0);
+        gl.bindVertexArray(vao); gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, count); gl.disable(gl.BLEND);
+        const pixels = new Float32Array(width * height * 4); gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, pixels);
+        const measured = regions.map(([name, x, y]) => {
+          const cx = Math.round((x + 1) * width / 2); const cy = Math.round((y + 1) * height / 2);
+          let sum = 0;
+          for (let row = cy - 12; row < cy + 12; row++) for (let col = cx - 12; col < cx + 12; col++) {
+            const i = (row * width + col) * 4;
+            sum += .2126 * pixels[i] + .7152 * pixels[i + 1] + .0722 * pixels[i + 2];
+          }
+          return { name, mean: sum / (24 * 24) };
+        });
+        const outer = measured.slice(1).reduce((sum, r) => sum + r.mean, 0) / (measured.length - 1);
+        cases.push({ orientation: orientation.name, fov, regions: measured,
+          centerToOuter: measured[0].mean / outer,
+          maxToMin: Math.max(...measured.map(r => r.mean)) / Math.min(...measured.map(r => r.mean)) });
+      }
+      return { cases, glError: gl.getError() };
+    } finally {
+      gl.disable(gl.BLEND); gl.deleteBuffer(buffer); gl.deleteVertexArray(vao);
+      this.destroyTarget(target); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
   }
   dispose() {

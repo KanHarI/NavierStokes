@@ -120,7 +120,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
   slider(optics, 'exposure', 'ISO / exposure', -6, 8, .1, () => state.exposure, v => { state.exposure = v; }, v => `ISO ${Math.round(100 * 2 ** v)} / ${v >= 0 ? '+' : ''}${v.toFixed(1)} EV`);
   slider(optics, 'focus', 'Focus distance', .1, 8, .05, () => state.focus, v => { state.focus = v; }, multiple);
   slider(optics, 'blur', 'Gaussian defocus', 0, 30, .25, () => state.blur, v => { state.blur = v; }, v => v.toFixed(1));
-  slider(optics, 'fov', 'Field of view', 25, 120, 1, () => state.fov, v => { state.fov = v; }, v => `${v.toFixed(0)}°`);
+  slider(optics, 'fov', 'Horizontal field of view', 25, 120, 1, () => state.fov, v => { state.fov = v; }, v => `${v.toFixed(0)}°`);
   slider(optics, 'near', 'Shell inner radius', .05, 7.9, .05, () => state.near,
     v => { state.near = Math.min(v, state.far - .05); }, multiple);
   slider(optics, 'far', 'Shell outer radius', .15, 8, .05, () => state.far,

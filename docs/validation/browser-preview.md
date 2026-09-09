@@ -25,6 +25,7 @@ Software-rendered test frame rates are not a hardware performance benchmark. Saf
 - The actual GPU redistribution shaders conserve linear luminance within 1% on centered, edge, colored, and uniformly overloaded synthetic images.
 - The actual Gaussian particle shader preserves integrated light within 1% for three distances at the tested minimum spot size. With a target of 12 light units, measured near/focus/far totals were 11.9127, 12.0693, and 11.9944. A 1.1-pixel minimum Gaussian width limits the pixel-sampling error observed with smaller points.
 - Uniform full-screen overexposure retains an explicit residual. The test verifies that display capacity is not falsely reported as sufficient.
+- A deterministic uniform shell remains approximately uniform in raw image brightness across camera rotations and fields of view. The [projection calibration](projection.md) documents the original bias, measure conversion, and actual GPU measurements.
 
 The GPU tests measure represented light before display encoding. They do not claim exact subjective brightness conservation. Half-float framebuffer rounding, finite Gaussian footprints, and pixel sampling all need to be accounted for separately.
 

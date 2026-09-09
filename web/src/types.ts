@@ -8,6 +8,7 @@ export interface AppState {
   near: number;
   far: number;
   focus: number;
+  /** Horizontal field of view in degrees. */
   fov: number;
   blur: number;
   exposure: number;
