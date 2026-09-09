@@ -1,5 +1,6 @@
 import type { AppState } from './types';
 import type { FieldData } from './field';
+import { planTransport, type TransportPlan } from './transport';
 
 const MAX_PARTICLES = 120_000;
 const LUMA = 'vec3(0.2126,0.7152,0.0722)';
@@ -57,7 +58,7 @@ out vec4 nextParticle;
 ${fieldGLSL}
 uniform vec3 uShip;
 uniform vec2 uShell;
-uniform float uScale,uDelta,uWall,uSeed,uTauStart,uTimeDelta;
+uniform float uScale,uDelta,uWall,uSeed,uTauStart,uTimeDelta,uGeometricDecay,uFirstWeight;
 uniform int uSteps,uReseed;
 float random(inout uint seed){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return float(seed)/4294967295.;}
 vec3 spawn(inout uint seed){
@@ -70,12 +71,14 @@ void main(){
   vec3 p=aParticle.xyz;float age=aParticle.w;
   bool reborn=uReseed==1||age<0.;
   if(!reborn){
-    float step=uDelta/float(max(uSteps,1));
-    for(int i=0;i<12;i++){if(i>=uSteps)break;
-      float t=uTauStart-uTimeDelta*float(i)/float(uSteps);
+    for(int i=0;i<uSteps;i++){
+      float decay=exp(-uGeometricDecay*float(i));
+      float weight=uFirstWeight*decay;float step=uDelta*weight;
+      float t=uGeometricDecay>0.?clamp(uTauStart*decay,uTau,uTauStart):uTauStart-uTimeDelta*float(i)/float(uSteps);
+      float midpointTau=max(uTau,t-.5*uTimeDelta*weight);
       if(!validAt(p,t)){reborn=true;break;}
       vec3 v=velocityAt(p,t);vec3 midpoint=p+v*step*.5;
-      if(!validAt(midpoint,t-.5*uTimeDelta/float(uSteps))){reborn=true;break;}p+=velocityAt(midpoint,t-.5*uTimeDelta/float(uSteps))*step;}
+      if(!validAt(midpoint,midpointTau)){reborn=true;break;}p+=velocityAt(midpoint,midpointTau)*step;}
     float d=length(p-uShip)/uScale;
     reborn=reborn||!valid(p)||d<uShell.x||d>uShell.y;
   }
@@ -199,6 +202,7 @@ export class Renderer {
   private lightInput = 0;
   private lightOutput = 0;
   private residualOverflow = 0;
+  private transportAudit: (TransportPlan & { reseeded: boolean }) | null = null;
   private disposed = false;
   private resizeObserver: ResizeObserver;
 
@@ -312,17 +316,19 @@ export class Renderer {
     s.particleCount = this.count;
     if (s.ship.scale / this.previousScale > 1.3 || s.ship.scale / this.previousScale < .77) this.resetPending = true;
     this.previousScale = s.ship.scale;
-    const stepLimit = this.field.manifest.core ? Math.min(.0025, .001 * (1 - s.time)) : .0025;
-    const steps = Math.min(12, Math.max(1, Math.ceil(Math.abs(transportDelta) / stepLimit)));
-    const delta = Math.sign(transportDelta) * Math.min(Math.abs(transportDelta), 12 * stepLimit);
-    if (Math.abs(transportDelta) > 12 * stepLimit) s.status = 'Dust transport limited to preserve integration accuracy';
+    const transport = planTransport({ isCore: !!this.field.manifest.core,
+      tauEnd: this.field.manifest.time.singular - s.time, timeDelta, transportDelta });
+    if (transport.reseed) s.status = 'Field time advanced · dust reseeded because this interval exceeds the integration budget';
+    if (transport.limited) s.status = 'Frozen-field dust speed limited by the integration budget · field time unchanged';
+    this.transportAudit = { ...transport, reseeded: this.resetPending || transport.reseed };
     const next = 1 - this.index;
     gl.useProgram(this.updateProgram.program); this.common(this.updateProgram);
     gl.uniform2f(this.uniform(this.updateProgram, 'uShell'), Math.max(.001, s.near * .8), s.far * 1.1);
-    this.f(this.updateProgram, 'uDelta', delta); this.f(this.updateProgram, 'uWall', wallDelta);
-    this.f(this.updateProgram, 'uTauStart', this.field.manifest.time.singular - s.time + timeDelta); this.f(this.updateProgram, 'uTimeDelta', timeDelta);
-    this.f(this.updateProgram, 'uSeed', this.seed++); this.i(this.updateProgram, 'uSteps', steps);
-    this.i(this.updateProgram, 'uReseed', this.resetPending ? 1 : 0); this.resetPending = false;
+    this.f(this.updateProgram, 'uDelta', transport.actualDelta); this.f(this.updateProgram, 'uWall', wallDelta);
+    this.f(this.updateProgram, 'uTauStart', transport.tauStart); this.f(this.updateProgram, 'uTimeDelta', timeDelta);
+    this.f(this.updateProgram, 'uGeometricDecay', transport.geometricDecay); this.f(this.updateProgram, 'uFirstWeight', transport.firstWeight);
+    this.f(this.updateProgram, 'uSeed', this.seed++); this.i(this.updateProgram, 'uSteps', transport.steps);
+    this.i(this.updateProgram, 'uReseed', this.transportAudit.reseeded ? 1 : 0); this.resetPending = false;
     gl.bindVertexArray(this.updateVAOs[this.index]); gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.feedback);
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, this.particleBuffers[next]);
     gl.enable(gl.RASTERIZER_DISCARD); gl.beginTransformFeedback(gl.POINTS); gl.drawArrays(gl.POINTS, 0, this.count); gl.endTransformFeedback();
@@ -388,7 +394,7 @@ export class Renderer {
   audit() {
     const gl = this.gl; const particles = new Float32Array(Math.min(this.count, 128) * 4);
     gl.bindBuffer(gl.COPY_READ_BUFFER, this.particleBuffers[this.index]); gl.getBufferSubData(gl.COPY_READ_BUFFER, 0, particles); gl.bindBuffer(gl.COPY_READ_BUFFER, null);
-    return { lightMeasuredAt: this.lastAnalysis, glError: gl.getError(), finiteParticles: [...particles].every(Number.isFinite), particleSamples: [...particles],
+    return { transport: this.transportAudit, lightMeasuredAt: this.lastAnalysis, glError: gl.getError(), finiteParticles: [...particles].every(Number.isFinite), particleSamples: [...particles],
       lightInput: this.lightInput, lightOutput: this.lightOutput, residualOverflow: this.residualOverflow };
   }
 

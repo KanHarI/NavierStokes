@@ -1,3 +1,4 @@
+import { timelinePosition, timeAtPosition } from './time';
 import type { Actions, AppState } from './types';
 
 type Binding = { update(): void };
@@ -101,6 +102,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     bindings.push({ update() {
       if (document.activeElement !== input) input.value = String(read());
       value.textContent = format(read());
+      input.setAttribute('aria-valuetext', value.textContent);
       input.disabled = !enabled();
     } });
   }
@@ -153,13 +155,22 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     v => { state.distanceSaturation = v; }, () => state.colorMode === 'speed');
   note(dust, 'Only nearby dust is simulated. Particles outside the observation buffer are recycled.');
   const hasFlow = () => state.flowAvailable && !state.loading;
-  slider(time, 'playbackSpeed', 'Simulation playback speed', .001, .2, .001, () => state.playbackSpeed,
-    v => { state.playbackSpeed = v; }, v => `${v.toFixed(3)} time / s`, hasFlow);
+  const timeModeRow = document.createElement('label'); timeModeRow.className = 'select-row';
+  timeModeRow.innerHTML = '<span>Time progression</span><select id="control-timeMode" aria-label="Time progression"><option value="linear">Linear · real acceleration</option><option value="logarithmic">Logarithmic · slow approach</option></select>';
+  find(time).append(timeModeRow);
+  const timeModeSelect = timeModeRow.querySelector('select')!;
+  on(timeModeSelect, 'change', () => {
+    state.timeMode = timeModeSelect.value as typeof state.timeMode;
+  });
+  bindings.push({ update() { timeModeSelect.value = state.timeMode; } });
+  slider(time, 'playbackSpeed', 'Time speed', -3, 1, .01, () => Math.log10(state.playbackSpeed),
+    v => { state.playbackSpeed = 10 ** v; }, v => `${(10 ** v).toFixed(3)} ${state.timeMode === 'linear' ? '×' : 'decades / s'}`, hasFlow);
+  note(time, 'Speed ranges from 0.001 to 10. In linear mode, 1× advances one simulation time unit per second.');
   checkbox(time, 'independentDust', 'Independent dust transport', () => state.independentDust,
     v => { state.independentDust = v; }, hasFlow);
   slider(time, 'dustSpeed', 'Independent dust speed', .001, 1, .001, () => state.dustSpeed,
     v => { state.dustSpeed = v; }, v => `${v.toFixed(3)} × velocity`, () => hasFlow() && state.independentDust);
-  if (state.isCore) note(time, 'The timeline spans four decades of remaining time. Reset view frames the core at the selected time. Flight stays independent of contraction.');
+  if (state.isCore) note(time, 'Linear time keeps a constant simulation rate as the core accelerates. Logarithmic time slows the approach for inspection. Reset view frames the core at the selected time; flight remains independent.');
   note(time, 'Independent mode moves dust even while time is paused. These paths differ from the physical time-dependent trajectories. Scrubbing reseeds the dust.');
 
   const panel = find('#flight-controls');
@@ -184,7 +195,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
   on(find('#reset-view'), 'click', () => actions.reset());
   on(find('#reseed-dust'), 'click', () => actions.reseed());
   on(play, 'click', () => { if (hasFlow()) state.playing = !state.playing; });
-  on(timeline, 'input', () => actions.scrub(state.isCore ? 1 - 10 ** (-Number(timeline.value)) : Number(timeline.value)));
+  on(timeline, 'input', () => actions.scrub(timeAtPosition(Number(timeline.value), state.timeMode)));
 
   let lastStatus = '';
   let lastTelemetry = 0;
@@ -195,13 +206,13 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
       prompt.classList.toggle('is-flying', state.pointerLocked);
       find('#model-label').textContent = state.modelLabel;
       find('#model-description').textContent = state.modelDescription;
-      timeline.min = String(state.isCore ? -Math.log10(1 - state.timeMin) : state.timeMin);
-      timeline.max = String(state.isCore ? -Math.log10(1 - state.timeMax) : state.timeMax);
-      timeline.step = state.isCore ? '.0001' : String(Math.max((state.timeMax - state.timeMin) / 10000, 1e-7));
-      if (document.activeElement !== timeline) timeline.value = String(state.isCore ? -Math.log10(1 - state.time) : state.time);
+      timeline.min = String(timelinePosition(state.timeMin, state.timeMode));
+      timeline.max = String(timelinePosition(state.timeMax, state.timeMode));
+      timeline.step = 'any';
+      if (document.activeElement !== timeline) timeline.value = String(timelinePosition(state.time, state.timeMode));
       timeline.disabled = !hasFlow();
       find('#time-output').textContent = state.isCore ? `t ${state.time.toFixed(6)} · remaining ${(1 - state.time).toExponential(2)}` : state.time.toFixed(4);
-      find('#clock-label').textContent = state.isCore ? 'CONCENTRATION · LOGARITHMIC TIMELINE' : state.independentDust ? 'SIMULATION TIME · INDEPENDENT DUST' : 'SIMULATION TIME';
+      find('#clock-label').textContent = `${state.timeMode === 'linear' ? 'LINEAR TIME' : 'LOGARITHMIC TIME'}${state.independentDust ? ' · INDEPENDENT DUST' : ''}`;
       timeline.setAttribute('aria-valuetext', `Time ${state.time.toFixed(6)}, remaining ${(1 - state.time).toExponential(2)}`);
       play.disabled = !hasFlow();
       play.textContent = state.playing ? 'Ⅱ' : '▶';

@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite (normally `http://127.0.0.1:5173/`). The viewer starts paused on the local core. The field selector switches to the separate heat-exterior checkpoint (`?field=exterior`). The core timeline spans four decades of remaining time, ending at `t=0.9999`. After scrubbing, **Reset view** frames the contracted core at that time; ordinary flight and scale remain independent of the flow. Press play to run synchronized tracers, or enable **Independent dust transport** to see movement through a frozen field. Use **Click to fly**, then Escape to return to the controls.
+Open the local URL printed by Vite (normally `http://127.0.0.1:5173/`). The viewer starts paused on the local core. The field selector switches to the separate heat-exterior checkpoint (`?field=exterior`). Time advances **linearly by default**, ending at `t=0.9999`. In **Time & transport**, choose linear or logarithmic progression and adjust **Time speed** from 0.001× to 10× (decades per second in logarithmic mode). Logarithmic progression slows the approach for inspection; switching modes preserves the current time. After scrubbing, **Reset view** frames the contracted core at that time; ordinary flight and scale remain independent of the flow. Press play to run synchronized tracers, or enable **Independent dust transport** to see movement through a frozen field. Use **Click to fly**, then Escape to return to the controls.
 
 ```sh
 npm run data:core          # Regenerate the ~544 KB core dataset (~23 seconds)
@@ -37,7 +37,7 @@ npm run test:browser      # WebGL, controls, integrity, and light tests
 
 See the [core mathematical contract](docs/core-mathematics.md), [parameter limitations](docs/core-parameters.md), and [core validation report](docs/validation/science-core.md). The local calculation is convergent on its declared patch, but the selected parameters fail a continuation gate used for global assembly in the paper. The [exterior specification](docs/mathematics.md) and [exterior report](docs/validation/science-preview.md) document the earlier checkpoint. The two fields are separate: annular matching, corrective disturbances, localization, and startup from rest remain open. Empty regions outside each dataset are unavailable fluid data. External acceleration is validated offline; it is not exported as a browser force field. The [exported-field divergence audit](docs/validation/core-lookup.md) measures interpolation error separately: RMS divergence is 0.27% of local strain on the sampled queries.
 
-The current renderer is a prototype: particles do not retain global identities, large changes reseed the local population, and half-float light buffers introduce measurable rounding. The browser reports excess brightness that cannot be redistributed within the bounded pass budget. Manual exposure never changes automatically.
+The current renderer is a prototype: particles do not retain global identities, large changes reseed the local population, and half-float light buffers introduce measurable rounding. The browser reports excess brightness that cannot be redistributed within the bounded pass budget. Manual exposure never changes automatically. The simulation clock follows the selected rate independently of the particle work budget. Large time jumps reseed local dust when accurate integration would exceed that budget; transport through a frozen field can still be limited separately.
 
 ![The running WebGL local-core preview](docs/core-preview.png)
 

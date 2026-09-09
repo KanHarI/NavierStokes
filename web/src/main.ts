@@ -3,6 +3,7 @@ import { initialState } from './types';
 import { createUI } from './ui';
 import { createNavigation } from './navigation';
 import { loadField, sampleVelocity } from './field';
+import { advanceTime } from './time';
 import { Renderer } from './renderer';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#space')!;
@@ -78,22 +79,16 @@ function frame(now: number) {
   const dt = document.hidden ? 0 : Math.min(.05, Math.max(0, elapsed));
   if (elapsed > 0 && elapsed < 1) state.fps = state.fps ? state.fps * .9 + .1 / elapsed : 1 / elapsed;
   navigation.update(dt);
-  let timeDelta = state.playing ? dt * state.playbackSpeed : 0;
-  let transportDelta = state.independentDust ? dt * state.dustSpeed : timeDelta;
-  // Bound both clocks by the remaining-time scale of the contracting core.
-  // The endpoint-based renderer substep budget must cover the same delta.
-  const budget = state.isCore ? Math.min(.03, .012 * (1 - state.time) / 1.012) : .03;
-  const limit = Math.min(1, budget / Math.max(Math.abs(timeDelta), Math.abs(transportDelta), 1e-9));
-  timeDelta *= limit; transportDelta *= limit;
-  if (state.time + timeDelta >= state.timeMax) {
-    timeDelta = Math.max(0, state.timeMax - state.time);
-    if (!state.independentDust) transportDelta = timeDelta;
-    state.playing = false;
-  }
-  state.time += timeDelta;
+  const clockElapsed = document.hidden ? 0 : Math.max(0, elapsed);
+  const nextTime = state.playing
+    ? advanceTime(state.time, state.timeMax, clockElapsed, state.playbackSpeed, state.timeMode)
+    : state.time;
+  const timeDelta = nextTime - state.time;
+  const transportDelta = state.independentDust ? clockElapsed * state.dustSpeed : timeDelta;
+  state.time = nextTime;
+  if (state.time >= state.timeMax) state.playing = false;
   const validShip = sampleVelocity(renderer.field, state.ship.position, state.time) !== null;
-  state.status = limit < 1 ? 'Transport limited · both clocks slowed together' :
-    !validShip ? 'Ship outside sampled patch · nearby valid dust only' :
+  state.status = !validShip ? 'Ship outside sampled patch · nearby valid dust only' :
     state.time >= state.timeMax ? 'Dataset endpoint · reset time to continue' :
     state.independentDust ? 'Independent dust · exploratory trajectories' :
     state.playing ? 'Fluid flow · synchronized tracers' : 'Paused · optics and flight remain active';

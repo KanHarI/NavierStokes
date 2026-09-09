@@ -21,6 +21,7 @@ export interface AppState {
   time: number;
   timeMin: number;
   timeMax: number;
+  timeMode: 'linear' | 'logarithmic';
   playing: boolean;
   playbackSpeed: number;
   independentDust: boolean;
@@ -52,7 +53,7 @@ export function initialState(): AppState {
     near: 1, far: 3, focus: 2, fov: 65, blur: 6, exposure: 0,
     density: 500, densityCompensation: false, colorMode: 'white',
     distanceSaturation: false, renderScale: 1,
-    time: 0, timeMin: 0, timeMax: 0.9, playing: false, playbackSpeed: 0.02,
+    time: 0, timeMin: 0, timeMax: 0.9, timeMode: 'linear', playing: false, playbackSpeed: 0.02,
     independentDust: false, dustSpeed: 0.1,
     fps: 0, particleCount: 0, status: 'Loading precomputed fields…',
     modelLabel: 'Scientific preview', modelDescription: 'Loading the dataset scope and validity limits.',
