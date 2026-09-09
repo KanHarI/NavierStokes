@@ -2,9 +2,13 @@
 
 ## Current scope
 
-This project is in planning. Read README.md and IMPLEMENTATION_PLAN.md for the agreed design. Documentation, repository setup, and installation of the requested planning skill are authorized. Do not implement the numerical model, application, data generator, or deployment until the user authorizes implementation. A later explicit authorization supersedes this planning restriction; do not ask for approval again for work already authorized in the conversation.
+The user has authorized implementation and subagents. Read README.md and IMPLEMENTATION_PLAN.md for the design and docs/mathematics.md for the current scientific scope. Proceed with ordinary implementation, fixes, and validation within the agreed scope without repeating the earlier planning approval question. A hosted application has not yet been deployed.
 
 Keep planned features distinct from implemented behavior. Preserve the distinction between a leading-flow approximation and the full corrected mathematical construction.
+
+The first implemented field is the paper's isolated heat-exterior family with diagnostic parameters. It is not the complete leading vortex or a blowup simulation. Never substitute a decorative vortex while describing it as the source construction.
+
+Run `npm run build`, `npm run test:science`, and relevant Playwright checks for implementation changes. Keep the small preview dataset reproducible; do not commit node_modules, dist, test outputs, or large generated datasets.
 
 ## Installed planning skill
 

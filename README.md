@@ -2,13 +2,48 @@
 
 Explore a concentrating fluid vortex from a freely moving, resizable spacecraft. Luminous dust reveals the flow; the spacecraft moves independently of it. Precomputed scientific fields supply the motion, and a WebGL 2 viewer renders the experience in the browser.
 
-**Status: planning only.** This repository currently contains documentation and repository-local planning skills. No numerical model, dataset, viewer, or deployment has been implemented. Repository creation, documentation, and skill installation are authorized; software implementation requires separate approval.
+**Status: first experimental implementation.** A working WebGL 2 viewer now samples a small precomputed **heat-exterior field** from Appendix A of the paper. The contracting core and full blowup construction have **not** been reconstructed. This is a source-based numerical checkpoint and an interactive optics/navigation prototype, not a visualization of a completed blowup simulation.
+
+## Run locally
+
+Requires Node.js 22.12 or newer and Python 3.10 or newer. The small preview dataset is checked in; generating it is optional for playback.
+
+```sh
+npm ci
+npm run dev
+```
+
+Open the local URL printed by Vite. The viewer starts paused. Press play to run synchronized tracers, or enable **Independent dust transport** to see movement through a frozen field. Use **Click to fly**, then Escape to return to the controls.
+
+```sh
+npm run data:preview       # Regenerate the ~54 KB reference dataset
+npm run test:science       # Numerical and dataset checks
+npm run build             # Type-check and produce the static dist/ site
+npx playwright install chromium
+npm run test:browser      # WebGL, controls, integrity, and light tests
+```
+
+`npm run preview` serves the production build locally. The application uses relative asset URLs so the static build can be served under a repository subpath. A hosted website has not yet been deployed.
+
+## What is implemented
+
+- A reproducible, standard-library Python reference for the paper's isolated exterior heat-flow family, with pressure evaluation and numerical checks.
+- A checksum-verified 2,049-sample profile table, reconstructed into Cartesian velocity in the browser. No full 3D time-volume download is required.
+- GPU tracer integration and local particle recycling; local-axis spacecraft movement, roll, and multiplicative scale.
+- Adjustable perspective, shell distances, focus, Gaussian blur, ISO, density, color, and time/dust controls.
+- Linear HDR lights and bounded multiscale redistribution of excess luminance, with a visible residual-overexposure indicator.
+
+See [the mathematical specification](docs/mathematics.md) and [scientific validation report](docs/validation/science-preview.md) for the actual represented equations and errors. The preview is pure azimuthal motion on a chosen annulus. It does not contain inward collapse, matching to the core, the corrective disturbances, localization, or startup from rest. Empty regions outside the dataset are not stationary fluid.
+
+The current renderer is a prototype: particles do not retain global identities, large changes reseed the local population, and half-float light buffers introduce measurable rounding. The browser reports excess brightness that cannot be redistributed within the bounded pass budget. Manual exposure never changes automatically.
+
+![The running WebGL exterior-field prototype](docs/preview.png)
 
 ## Scientific purpose
 
 The project is motivated by OpenAI's September 8, 2026 post, [On the Navier–Stokes Millennium Prize Problem](https://openai.com/index/navier-stokes-solution/), and the accompanying [Finite Time Blowup for Navier–Stokes paper](https://cdn.openai.com/pdf/32d9f210-8b73-45e0-91bc-82a30aef8a9a/navier-stokes.pdf). The authors describe a forced incompressible flow with finite-time velocity blowup and bounded kinetic energy. The accompanying [Lean formalization repository](https://github.com/openai/NavierStokesAndEuler) is a reference, not a dependency of the planned viewer.
 
-The first release is intended to reconstruct the paper's **leading-flow approximation**, subject to a numerical feasibility study. The complete construction includes oscillatory disturbances and corrections essential to its forcing properties. A visualization of the leading flow must not be presented as a reproduction or verification of that complete result.
+The next scientific target is to reconstruct the paper's **leading-flow approximation**, subject to the remaining feasibility work. The complete construction includes oscillatory disturbances and corrections essential to its forcing properties. A visualization of the leading flow must not be presented as a reproduction or verification of that complete result. The current exterior checkpoint is a smaller component of that target.
 
 We will compute and explore a finite, resolved interval before the singular time. A finite dataset cannot contain an actual infinity. The viewer will disclose the represented model, valid domain, time interval, and resolution limits.
 
@@ -53,7 +88,7 @@ An image brighter than the capacity of the entire display cannot be preserved th
 
 Increasing particle density initially increases total light because per-particle brightness remains constant. An optional density-compensation setting can approximately preserve overall brightness when density changes.
 
-## Planned architecture and budgets
+## Architecture and budgets
 
 1. **Offline generator:** Python, double-precision profile construction, diagnostics, and compact dataset export.
 2. **Hosted data:** versioned manifests and compressed chunks, exploiting validated axisymmetry and similarity coordinates where applicable.
@@ -85,7 +120,7 @@ datasets/      Dataset schema and small preview fixtures
 docs/          Mathematical specification, decisions, validation reports
 ```
 
-These directories are a plan; they have not been created. There are no build or run commands yet. The source repository is intended to be public, with full datasets distributed as hosting artifacts rather than routinely committed into source history. Hosting and the code license remain decisions for implementation.
+The implementation currently lives in `science/` and `web/src/`; the checked-in preview is under `web/public/datasets/`. Mathematical documentation and reports are under `docs/`. The future `datasets/` schema directory and full correction layers remain planned. Full high-resolution datasets will be distributed as hosting artifacts rather than routinely committed into source history. Hosting and the project's own code license remain open decisions.
 
 ## Planning skill
 
@@ -93,4 +128,4 @@ The repository includes Matt Pocock's [grill-me skill](https://www.aihero.dev/sk
 
 In Codex, invoke `$grill-me` or select it through the skills interface. Hosts that support the upstream slash command can use `/grill-me`. Codex discovers repository skills in `.agents/skills`; see the [official skill documentation](https://learn.chatgpt.com/docs/build-skills). Newly installed skills should be available on the next turn; restart the agent if discovery has not refreshed.
 
-The upstream skill files are unmodified. [AGENTS.md](AGENTS.md) supplies the invocation fallback for hosts without a literal `Skill` tool. [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) records the source revision and MIT license. Installing the skill does not start an interview or authorize application implementation.
+The upstream skill files are unmodified. [AGENTS.md](AGENTS.md) supplies the invocation fallback for hosts without a literal `Skill` tool. [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) records the source revision and MIT license. Installing the skill does not automatically start an interview.

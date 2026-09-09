@@ -1,0 +1,26 @@
+{
+  "quadratureMaxAbsoluteDifference": 1.1102230246251565e-16,
+  "heatOdeMaxAbsoluteResidual": 2.6020852139652106e-18,
+  "float32LookupMaxAbsoluteError": 8.086710989729795e-08,
+  "interpolationRefinement": [
+    {
+      "count": 513,
+      "maxAbsoluteInterpolationError": 1.1177761483072146e-06
+    },
+    {
+      "count": 1025,
+      "maxAbsoluteInterpolationError": 2.9275888513424775e-07
+    },
+    {
+      "count": 2049,
+      "maxAbsoluteInterpolationError": 7.254613310081481e-08
+    }
+  ],
+  "referenceQueryCount": 256,
+  "thresholds": {
+    "float32LookupAbsolute": 1e-06,
+    "heatOdeAbsolute": 1e-10
+  },
+  "generationSeconds": 0.169261,
+  "totalDatasetBytes": 53561
+}

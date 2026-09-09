@@ -1,0 +1,9 @@
+{
+  "h": 0.005,
+  "cInfinity": 1.0,
+  "count": 2049,
+  "quadratureIntervals": 512,
+  "zMax": 16.0,
+  "domain": {"radialMin": 0.5, "radialMax": 8.0, "axialMin": -8.0, "axialMax": 8.0},
+  "time": {"start": 0.0, "end": 0.99, "singular": 1.0, "playbackAvailable": true}
+}

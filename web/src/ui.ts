@@ -1,0 +1,215 @@
+import type { Actions, AppState } from './types';
+
+type Binding = { update(): void };
+const formatScale = (value: number) => value < .01 || value >= 1000 ? value.toExponential(2) : value.toFixed(value < 1 ? 3 : 2);
+
+export function createUI(container: HTMLElement, state: AppState, actions: Actions) {
+  const root = document.createElement('div');
+  root.className = 'cockpit';
+  root.innerHTML = `
+    <header class="mission-header">
+      <div>
+        <div class="eyebrow"><span class="signal"></span> Fluid observatory / 001</div>
+        <h1 class="wordmark">Navier–Stokes <span>/ explorer</span></h1>
+        <span class="scope-badge" id="model-label"></span>
+      </div>
+      <nav class="header-actions" aria-label="Viewer tools">
+        <button class="quiet-button" id="toggle-help" aria-expanded="false" aria-controls="flight-help">Flight guide</button>
+        <button class="quiet-button" id="toggle-controls" aria-expanded="true" aria-controls="flight-controls">Controls</button>
+      </nav>
+    </header>
+    <aside class="control-panel" id="flight-controls" aria-label="Exploration controls">
+      <div class="panel-top"><h2>Observation controls</h2><span>ESC to interact</span></div>
+      <details class="control-section" open><summary>Optics & light</summary><div class="section-content" id="optics-controls"></div></details>
+      <details class="control-section"><summary>Ship & scale</summary><div class="section-content" id="ship-controls"></div></details>
+      <details class="control-section"><summary>Dust & color</summary><div class="section-content" id="dust-controls"></div></details>
+      <details class="control-section"><summary>Time & transport</summary><div class="section-content" id="time-controls"></div></details>
+      <div class="panel-footer"><button class="quiet-button" id="reset-view">Reset view</button><button class="quiet-button" id="reseed-dust">New dust</button></div>
+    </aside>
+    <aside class="help-card" id="flight-help" hidden>
+      <h2>Your ship is free of the flow.</h2>
+      <dl class="key-list">
+        <dt>Mouse</dt><dd>Look in any direction</dd>
+        <dt>W A S D</dt><dd>Forward, back, sideways</dd>
+        <dt>R / F</dt><dd>Local up / down</dd>
+        <dt>Q / E</dt><dd>Roll left / right</dd>
+        <dt>Z / X</dt><dd>Shrink / enlarge</dd>
+        <dt>Shift</dt><dd>Travel faster</dd>
+        <dt>Space</dt><dd>Play / pause</dd>
+        <dt>Esc</dt><dd>Release mouse</dd>
+      </dl>
+      <p class="small-note">There is no fixed up. Scale changes your viewing distances and travel speed. Light is sharp at the focus shell and spreads softly on either side.</p>
+      <p class="small-note scope-note" id="model-description"></p>
+      <p class="small-note"><a href="https://github.com/KanHarI/NavierStokes" target="_blank" rel="noopener noreferrer">Source & scientific scope ↗</a></p>
+    </aside>
+    <div class="reticle" aria-hidden="true"></div>
+    <div class="flight-prompt" id="flight-prompt"><button id="enter-flight">Click to fly <span aria-hidden="true">↗</span></button></div>
+    <section class="telemetry" aria-label="Live telemetry">
+      <div><div class="instrument-label">Observation scale</div><div class="instrument-number"><span id="ship-scale">1.00</span><small>×</small></div></div>
+      <div><div class="instrument-label">Local tracers</div><div class="instrument-number" id="particle-count">—</div></div>
+      <div class="performance-instrument"><div class="instrument-label">Frame rate</div><div class="instrument-number"><span id="frame-rate">—</span><small>fps</small></div></div>
+    </section>
+    <footer class="timeline-bar">
+      <button class="play-button" id="toggle-play" aria-label="Play simulation">▶</button>
+      <div class="time-track">
+        <label class="time-caption" for="simulation-time"><span id="clock-label">SIMULATION TIME</span><output id="time-output">0.000</output></label>
+        <input id="simulation-time" type="range" min="0" max="1" step="0.0001" value="0" aria-label="Simulation time">
+      </div>
+      <div class="status-readout" id="viewer-status" role="status" aria-live="polite"></div>
+    </footer>`;
+  container.append(root);
+  const bindings: Binding[] = [];
+  const listeners: (() => void)[] = [];
+  const find = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
+  const on = (element: HTMLElement, event: string, callback: EventListener) => {
+    element.addEventListener(event, callback);
+    listeners.push(() => element.removeEventListener(event, callback));
+  };
+  function slider(section: string, key: string, label: string, min: number, max: number, step: number,
+    read: () => number, write: (value: number) => void, format: (value: number) => string,
+    enabled: () => boolean = () => true) {
+    const row = document.createElement('label');
+    row.className = 'control-row';
+    row.htmlFor = `control-${key}`;
+    const caption = document.createElement('span');
+    caption.className = 'control-caption';
+    const text = document.createElement('span');
+    text.textContent = label;
+    const value = document.createElement('output');
+    value.className = 'control-value';
+    value.htmlFor = `control-${key}`;
+    caption.append(text, value);
+    const input = document.createElement('input');
+    input.id = `control-${key}`;
+    input.type = 'range';
+    input.min = String(min); input.max = String(max); input.step = String(step);
+    input.setAttribute('aria-label', label);
+    row.append(caption, input);
+    find(section).append(row);
+    on(input, 'input', () => {
+      write(Number(input.value));
+      // Keep the thumb at the accepted value when coupled bounds clamp the input.
+      input.value = String(read());
+    });
+    bindings.push({ update() {
+      if (document.activeElement !== input) input.value = String(read());
+      value.textContent = format(read());
+      input.disabled = !enabled();
+    } });
+  }
+  function checkbox(section: string, key: string, label: string, read: () => boolean,
+    write: (value: boolean) => void, enabled: () => boolean = () => true) {
+    const row = document.createElement('label');
+    row.className = 'check-row';
+    const input = document.createElement('input');
+    input.type = 'checkbox'; input.id = `control-${key}`;
+    const text = document.createElement('span'); text.textContent = label;
+    row.append(input, text); find(section).append(row);
+    on(input, 'change', () => write(input.checked));
+    bindings.push({ update() { input.checked = read(); input.disabled = !enabled(); } });
+  }
+  function note(section: string, text: string) {
+    const paragraph = document.createElement('p'); paragraph.className = 'small-note';
+    paragraph.textContent = text; find(section).append(paragraph);
+  }
+  const optics = '#optics-controls';
+  const ship = '#ship-controls';
+  const dust = '#dust-controls';
+  const time = '#time-controls';
+  const multiple = (v: number) => `${v.toFixed(2)} × scale`;
+  slider(optics, 'exposure', 'ISO / exposure', -6, 8, .1, () => state.exposure, v => { state.exposure = v; }, v => `ISO ${Math.round(100 * 2 ** v)} / ${v >= 0 ? '+' : ''}${v.toFixed(1)} EV`);
+  slider(optics, 'focus', 'Focus distance', .1, 8, .05, () => state.focus, v => { state.focus = v; }, multiple);
+  slider(optics, 'blur', 'Gaussian defocus', 0, 30, .25, () => state.blur, v => { state.blur = v; }, v => v.toFixed(1));
+  slider(optics, 'fov', 'Field of view', 25, 120, 1, () => state.fov, v => { state.fov = v; }, v => `${v.toFixed(0)}°`);
+  slider(optics, 'near', 'Shell inner radius', .05, 7.9, .05, () => state.near,
+    v => { state.near = Math.min(v, state.far - .05); }, multiple);
+  slider(optics, 'far', 'Shell outer radius', .15, 8, .05, () => state.far,
+    v => { state.far = Math.max(v, state.near + .05); }, multiple);
+  slider(optics, 'renderScale', 'Render resolution', .5, 1.5, .1, () => state.renderScale,
+    v => { state.renderScale = v; }, v => `${Math.round(v * 100)}%`);
+  slider(ship, 'scale', 'Observation scale', -17, 14, .05, () => Math.log2(state.ship.scale),
+    v => { state.ship.scale = 2 ** v; }, v => `${formatScale(2 ** v)} ×`);
+  slider(ship, 'movementSpeed', 'Travel speed', .05, 3, .05, () => state.movementSpeed,
+    v => { state.movementSpeed = v; }, v => `${v.toFixed(2)} scales / s`);
+  note(ship, 'Scaling leaves your position fixed. Travel speed and shell distances follow the observation scale.');
+  slider(dust, 'density', 'Particle density', 10, 2000, 10, () => state.density,
+    v => { state.density = v; }, v => `${Math.round(v)} / scale³`);
+  checkbox(dust, 'densityCompensation', 'Compensate brightness for density', () => state.densityCompensation,
+    v => { state.densityCompensation = v; });
+  const colorRow = document.createElement('label'); colorRow.className = 'select-row';
+  colorRow.innerHTML = '<span>Particle color</span><select id="control-colorMode" aria-label="Particle color"><option value="white">White light</option><option value="speed">Speed · blue → red</option></select>';
+  find(dust).append(colorRow);
+  const colorSelect = colorRow.querySelector('select')!;
+  on(colorSelect, 'change', () => { state.colorMode = colorSelect.value as AppState['colorMode']; });
+  bindings.push({ update() { colorSelect.value = state.colorMode; } });
+  checkbox(dust, 'distanceSaturation', 'Fade color with distance', () => state.distanceSaturation,
+    v => { state.distanceSaturation = v; }, () => state.colorMode === 'speed');
+  note(dust, 'Only nearby dust is simulated. Particles outside the observation buffer are recycled.');
+  const hasFlow = () => state.flowAvailable && !state.loading;
+  slider(time, 'playbackSpeed', 'Simulation playback speed', .001, .2, .001, () => state.playbackSpeed,
+    v => { state.playbackSpeed = v; }, v => `${v.toFixed(3)} time / s`, hasFlow);
+  checkbox(time, 'independentDust', 'Independent dust transport', () => state.independentDust,
+    v => { state.independentDust = v; }, hasFlow);
+  slider(time, 'dustSpeed', 'Independent dust speed', .001, 1, .001, () => state.dustSpeed,
+    v => { state.dustSpeed = v; }, v => `${v.toFixed(3)} × velocity`, () => hasFlow() && state.independentDust);
+  note(time, 'Independent mode moves dust even while time is paused. These paths differ from the physical time-dependent trajectories. Scrubbing reseeds the dust.');
+
+  const panel = find('#flight-controls');
+  const help = find('#flight-help');
+  const controlsToggle = find<HTMLButtonElement>('#toggle-controls');
+  const helpToggle = find<HTMLButtonElement>('#toggle-help');
+  const prompt = find('#flight-prompt');
+  const timeline = find<HTMLInputElement>('#simulation-time');
+  const play = find<HTMLButtonElement>('#toggle-play');
+  const status = find('#viewer-status');
+  on(controlsToggle, 'click', () => {
+    panel.hidden = !panel.hidden;
+    controlsToggle.setAttribute('aria-expanded', String(!panel.hidden));
+    if (!panel.hidden && innerWidth < 760) { help.hidden = true; helpToggle.setAttribute('aria-expanded', 'false'); }
+  });
+  on(helpToggle, 'click', () => {
+    help.hidden = !help.hidden;
+    helpToggle.setAttribute('aria-expanded', String(!help.hidden));
+    if (!help.hidden && innerWidth < 760) { panel.hidden = true; controlsToggle.setAttribute('aria-expanded', 'false'); }
+  });
+  on(find('#enter-flight'), 'click', () => actions.enterFlight());
+  on(find('#reset-view'), 'click', () => actions.reset());
+  on(find('#reseed-dust'), 'click', () => actions.reseed());
+  on(play, 'click', () => { if (hasFlow()) state.playing = !state.playing; });
+  on(timeline, 'input', () => actions.scrub(Number(timeline.value)));
+
+  let lastStatus = '';
+  let lastTelemetry = 0;
+  const result = {
+    update() {
+      for (const binding of bindings) binding.update();
+      root.classList.toggle('is-captured', state.pointerLocked);
+      prompt.classList.toggle('is-flying', state.pointerLocked);
+      find('#model-label').textContent = state.modelLabel;
+      find('#model-description').textContent = state.modelDescription;
+      timeline.min = String(state.timeMin); timeline.max = String(state.timeMax);
+      timeline.step = String(Math.max((state.timeMax - state.timeMin) / 10000, 1e-7));
+      if (document.activeElement !== timeline) timeline.value = String(state.time);
+      timeline.disabled = !hasFlow();
+      find('#time-output').textContent = state.time.toFixed(4);
+      find('#clock-label').textContent = state.independentDust ? 'SIMULATION TIME · INDEPENDENT DUST' : 'SIMULATION TIME';
+      play.disabled = !hasFlow();
+      play.textContent = state.playing ? 'Ⅱ' : '▶';
+      play.setAttribute('aria-label', state.playing ? 'Pause simulation' : 'Play simulation');
+      play.setAttribute('aria-pressed', String(state.playing));
+      const message = state.overflow > .01 ? `${state.status} · Unresolved light: ${(state.overflow * 100).toFixed(1)}%` : state.status;
+      if (message !== lastStatus) { status.textContent = message; lastStatus = message; }
+      status.classList.toggle('is-warning', state.overflow > .01 || !state.flowAvailable);
+      const now = performance.now();
+      if (now - lastTelemetry > 200) {
+        find('#ship-scale').textContent = formatScale(state.ship.scale);
+        find('#particle-count').textContent = state.particleCount.toLocaleString();
+        find('#frame-rate').textContent = state.fps ? Math.round(state.fps).toString() : '—';
+        lastTelemetry = now;
+      }
+    },
+    dispose() { for (const remove of listeners) remove(); root.remove(); },
+  };
+  result.update();
+  return result;
+}

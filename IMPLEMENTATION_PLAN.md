@@ -2,11 +2,17 @@
 
 ## 1. Status, objective, and authorization
 
-This document records the agreed design and the proposed order of implementation. The repository currently contains planning documentation and repository-local planning skills only. Do not interpret this plan, its examples, or its proposed application directory names as existing functionality.
+This document records the agreed design and proposed order of implementation. On September 9, 2026 the user authorized implementation and subagents. The repository now contains an initial heat-exterior scientific checkpoint and a WebGL 2 prototype; see README.md for the runnable commands and actual feature inventory. Requirements and exit conditions below remain targets unless explicitly reported as validated.
 
 The objective is a hosted browser experience in which a freely moving, resizable spacecraft explores precomputed fluid fields through luminous tracer particles. The first scientific target is a documented numerical reconstruction of the source paper's leading flow, not a claim to reproduce the complete corrected construction or to prove blowup numerically.
 
-The user has authorized writing these documents, creating a public GitHub repository, and installing the `grill-me` planning skill with its required dependency. **Application and numerical implementation have not yet been authorized.** Once implementation is authorized, ordinary work within the agreed scope should proceed without repeatedly requesting approval. Revisit scope if the mathematical feasibility study shows that a faithful leading-flow implementation cannot meet the agreed constraints; do not silently substitute an unrelated vortex.
+The user has authorized writing these documents, creating a public GitHub repository, installing the `grill-me` planning skill with its required dependency, and starting application/numerical implementation with subagents. Ordinary work within this scope should proceed without repeatedly requesting approval. Revisit scope if a faithful leading-flow implementation cannot meet the agreed constraints; do not silently substitute an unrelated vortex.
+
+### Current checkpoint
+
+The source's core profiles require further constructive choices and matching work. The first implementation therefore evaluates the explicitly computable heat-exterior family from Appendix A on a diagnostic annulus. Its chosen parameters are not certified parameters of an assembled core/exterior construction. It supplies real source-based exterior swirl for testing the browser while core reconstruction remains open. Mathematical details, limitations, and measured lookup errors are recorded in docs/mathematics.md and docs/validation/science-preview.md.
+
+The small generator and browser do not exhaust the final one-hour computation budget. No full high-resolution run or hosted deployment has been performed. The first checkpoint does not complete Milestone 1's full leading-flow feasibility requirement or authorize labeling the viewer a completed blowup simulation.
 
 ## 2. Requirements and boundaries
 
@@ -343,7 +349,7 @@ GitHub Pages is the initial hosting candidate. Verify path handling, MIME types,
 
 | Milestone | Concrete result | Exit condition |
 | --- | --- | --- |
-| 0 — Documentation | README, this plan, planning skills, public repository | Requested documentation and skill installation complete; implementation remains pending approval |
+| 0 — Documentation | README, this plan, planning skills, public repository | Complete; subsequent implementation authorized |
 | 1 — Mathematical feasibility | Source-linked specification, reference evaluator, small sample | Checkpoint A; approximation is credible and limitations explicit |
 | 2 — Preview export | Compact manifest/chunks, decoder reference, error/size report | Checkpoint B; preview below 5 MB |
 | 3 — Interactive flow | Flight, scale, time, local GPU dust, basic white rendering | Checkpoint C on preview data |
@@ -351,7 +357,7 @@ GitHub Pages is the initial hosting candidate. Verify path handling, MIME types,
 | 5 — Refined dataset | Bounded final generation and complete validation report | Run and dataset budgets met; selected numerical tolerances pass |
 | 6 — Hosted release | Static build, documentation, reproducible release artifact | Browser checks pass; hosting target selected and release reviewed |
 
-Scientific feasibility and the basic dataset interface come before polishing visuals. Milestones 3 and 4 should be usable with the small preview so interaction can be refined without regenerating the final dataset. Do not add separate agents or parallel agent work without explicit authorization.
+Scientific feasibility and the basic dataset interface come before polishing visuals. Milestones 3 and 4 should be usable with the small preview so interaction can be refined without regenerating the final dataset. The user explicitly authorized subagents for implementation; use bounded independent tasks with clear file ownership.
 
 Revisit the scope if the profile construction is not computationally accessible, the approximation's field cannot be validated, or the required accuracy cannot fit the compute/data budgets. Routine implementation details such as panel layout, exact particle counts, shader pass counts, and package versions can be decided through measured iteration within the authorized scope.
 

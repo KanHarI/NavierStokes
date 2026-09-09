@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "id": "heat-exterior-checkpoint-v1",
+  "status": "heat-exterior-checkpoint",
+  "velocityAvailable": true,
+  "label": "Heat exterior \u00b7 core not reconstructed",
+  "source": {
+    "paperUrl": "https://cdn.openai.com/pdf/32d9f210-8b73-45e0-91bc-82a30aef8a9a/navier-stokes.pdf",
+    "sha256": "0e779481c4da40bd28d1e642e1d8ca57447d129610df28dfa5a11e9af8ae228f",
+    "retrievedAt": "2026-09-09",
+    "equations": [
+      "A.32",
+      "A.33",
+      "A.34",
+      "A.37"
+    ],
+    "formalizationConsulted": false
+  },
+  "model": {
+    "h": 0.005,
+    "cInfinity": 1.0,
+    "viscosity": 1,
+    "scope": "Exact heat-exterior family only; core and matching not reconstructed",
+    "parameterStatus": "Diagnostic choices, not a certified assembled construction",
+    "units": "nondimensional",
+    "symmetry": "axisymmetric, independent of axial coordinate",
+    "omitted": [
+      "contracting core",
+      "annular matching",
+      "oscillatory corrections",
+      "localization",
+      "startup from rest"
+    ],
+    "externalAcceleration": [
+      0,
+      0,
+      0
+    ]
+  },
+  "coordinates": {
+    "axis": "z",
+    "basis": "Cartesian right-handed",
+    "lookup": "Z=4*(1-t)/(x*x+y*y)",
+    "velocity": "u_theta=cInfinity*(r*r/2)^(-0.5-h)*H(Z); u=(-u_theta*y/r,u_theta*x/r,0)"
+  },
+  "domain": {
+    "radialMin": 0.5,
+    "radialMax": 8.0,
+    "axialMin": -8.0,
+    "axialMax": 8.0
+  },
+  "time": {
+    "start": 0.0,
+    "end": 0.99,
+    "singular": 1.0,
+    "playbackAvailable": true
+  },
+  "chunks": [
+    {
+      "url": "heat-exterior.json",
+      "kind": "heat-profile",
+      "sha256": "278c42f6f94d49635a8b653fabc621751bf9d15552757f461c232fb582b00aae",
+      "bytes": 49028,
+      "encoding": "JSON float64 values; GPU float32 validated",
+      "count": 2049
+    },
+    {
+      "url": "velocity-reference.json",
+      "kind": "velocity-reference",
+      "sha256": "07d56d0e329ef4bc0d9340b7ccb579ab2686dc9fdd612950362e90bec06b72d8",
+      "bytes": 1502,
+      "encoding": "JSON float64",
+      "optional": true
+    }
+  ],
+  "validation": {
+    "quadratureMaxAbsoluteDifference": 1.1102230246251565e-16,
+    "heatOdeMaxAbsoluteResidual": 2.6020852139652106e-18,
+    "float32LookupMaxAbsoluteError": 8.086710989729795e-08,
+    "interpolationRefinement": [
+      {
+        "count": 513,
+        "maxAbsoluteInterpolationError": 1.1177761483072146e-06
+      },
+      {
+        "count": 1025,
+        "maxAbsoluteInterpolationError": 2.9275888513424775e-07
+      },
+      {
+        "count": 2049,
+        "maxAbsoluteInterpolationError": 7.254613310081481e-08
+      }
+    ],
+    "referenceQueryCount": 256,
+    "thresholds": {
+      "float32LookupAbsolute": 1e-06,
+      "heatOdeAbsolute": 1e-10
+    },
+    "generationSeconds": 0.169261
+  },
+  "limitations": [
+    "Annulus is a diagnostic crop, not the proven core/exterior boundary.",
+    "No global finite-energy or blowup claim applies to this isolated component.",
+    "Queries outside the declared domain are invalid, not stationary fluid."
+  ]
+}
