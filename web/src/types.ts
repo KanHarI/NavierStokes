@@ -2,6 +2,7 @@ export type Vec3 = [number, number, number];
 export type Quat = [number, number, number, number];
 
 export interface AppState {
+  isCore: boolean;
   ship: { position: Vec3; orientation: Quat; scale: number };
   movementSpeed: number;
   pointerLocked: boolean;
@@ -43,8 +44,10 @@ export interface Actions {
 }
 
 export function initialState(): AppState {
+  const isCore = new URLSearchParams(location.search).get('field') !== 'exterior';
   return {
-    ship: { position: [0, -2.4, 0.6], orientation: [0.627,-0.0,0.0,0.779], scale: 1 },
+    isCore,
+    ship: { position: isCore ? [0, -.6, .15] : [0, -2.4, 0.6], orientation: [0.627,-0.0,0.0,0.779], scale: isCore ? .25 : 1 },
     movementSpeed: 0.5, pointerLocked: false,
     near: 1, far: 3, focus: 2, fov: 65, blur: 6, exposure: 0,
     density: 500, densityCompensation: false, colorMode: 'white',

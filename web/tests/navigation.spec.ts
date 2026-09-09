@@ -2,11 +2,11 @@ import { expect, test } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   // Isolate navigation from the running viewer and its animation loop.
-  await page.route('**/navigation-fixture', route => route.fulfill({
+  await page.route('**/navigation-fixture?field=exterior', route => route.fulfill({
     contentType: 'text/html',
     body: '<!doctype html><canvas></canvas><input aria-label="Editing field"><button>UI button</button>',
   }));
-  await page.goto('/navigation-fixture');
+  await page.goto('/navigation-fixture?field=exterior');
 });
 
 test('normalizes orientation and remains a finite rotation after repeated local mouse and roll input', async ({ page }) => {

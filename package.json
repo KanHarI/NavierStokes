@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test:browser": "playwright test",
+    "data:core": "python3 science/generate_core.py",
     "data:preview": "python3 science/generate_preview.py",
     "test:science": "python3 -m unittest discover -s science/tests"
   },

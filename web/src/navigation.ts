@@ -86,6 +86,13 @@ export function createNavigation(canvas: HTMLCanvasElement, state: AppState) {
       state.ship.position = [...defaults.ship.position];
       state.ship.orientation = normalize([...defaults.ship.orientation]);
       state.ship.scale = defaults.ship.scale;
+      if (state.isCore) {
+        const tau = 1 - state.time;
+        state.ship.position[0] *= Math.sqrt(tau);
+        state.ship.position[1] *= Math.sqrt(tau);
+        state.ship.position[2] *= tau ** .495;
+        state.ship.scale *= Math.sqrt(tau);
+      }
       clearKeys();
     },
     dispose() {

@@ -58,16 +58,16 @@ function showError(error: unknown) {
 
 async function start() {
   try {
-    const field = await loadField();
+    const field = await loadField(state.isCore ? 'core' : 'exterior');
     if (disposed) return;
     state.timeMin = field.manifest.time.start; state.timeMax = field.manifest.time.end;
     state.time = state.timeMin;
     state.modelLabel = field.manifest.label ?? 'Heat exterior · core not reconstructed';
-    state.modelDescription = `${field.manifest.model.scope}. This diagnostic annulus is not a reconstructed blowup. The central core is outside the dataset; empty regions are not stationary fluid.`;
-    state.maxSpeed = Math.hypot(...sampleVelocity(field, [field.manifest.domain.radialMin, 0, 0], state.timeMax)!);
+    state.modelDescription = state.isCore ? `${field.manifest.model.scope}. This finite local profile has inward flow and axial stretching. Global matching and the full correction construction are not reconstructed. Use Reset view after scrubbing to frame the smaller core. Empty regions are outside the computed patch.` : `${field.manifest.model.scope}. This diagnostic annulus is not a reconstructed blowup. The central core is outside the dataset; empty regions are not stationary fluid.`;
+    state.maxSpeed = state.isCore ? 100 : Math.hypot(...sampleVelocity(field, [field.manifest.domain.radialMin, 0, 0], state.timeMax)!);
     renderer = new Renderer(canvas, state, field); debug.renderer = renderer;
     state.flowAvailable = true; state.loading = false;
-    state.status = 'Exterior field ready · press play or enter flight';
+    state.status = 'Field ready · press play or enter flight';
     ui.update(); lastFrame = performance.now(); frameID = requestAnimationFrame(frame);
   } catch (error) { showError(error); }
 }
@@ -80,7 +80,10 @@ function frame(now: number) {
   navigation.update(dt);
   let timeDelta = state.playing ? dt * state.playbackSpeed : 0;
   let transportDelta = state.independentDust ? dt * state.dustSpeed : timeDelta;
-  const limit = Math.min(1, .03 / Math.max(Math.abs(timeDelta), Math.abs(transportDelta), 1e-9));
+  // Bound both clocks by the remaining-time scale of the contracting core.
+  // The endpoint-based renderer substep budget must cover the same delta.
+  const budget = state.isCore ? Math.min(.03, .012 * (1 - state.time) / 1.012) : .03;
+  const limit = Math.min(1, budget / Math.max(Math.abs(timeDelta), Math.abs(transportDelta), 1e-9));
   timeDelta *= limit; transportDelta *= limit;
   if (state.time + timeDelta >= state.timeMax) {
     timeDelta = Math.max(0, state.timeMax - state.time);
@@ -90,10 +93,10 @@ function frame(now: number) {
   state.time += timeDelta;
   const validShip = sampleVelocity(renderer.field, state.ship.position, state.time) !== null;
   state.status = limit < 1 ? 'Transport limited · both clocks slowed together' :
-    !validShip ? 'Ship outside sampled annulus · nearby valid dust only' :
+    !validShip ? 'Ship outside sampled patch · nearby valid dust only' :
     state.time >= state.timeMax ? 'Dataset endpoint · reset time to continue' :
     state.independentDust ? 'Independent dust · exploratory trajectories' :
-    state.playing ? 'Exterior flow · synchronized tracers' : 'Paused · optics and flight remain active';
+    state.playing ? 'Fluid flow · synchronized tracers' : 'Paused · optics and flight remain active';
   if (reseedAt >= 0 && now >= reseedAt) {
     renderer.reseed(); reseedAt = -1; canvas.style.opacity = '1';
   }

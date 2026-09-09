@@ -14,6 +14,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
         <span class="scope-badge" id="model-label"></span>
       </div>
       <nav class="header-actions" aria-label="Viewer tools">
+        <select id="field-select" aria-label="Scientific field"><option value="core">Local core</option><option value="exterior">Heat exterior</option></select>
         <button class="quiet-button" id="toggle-help" aria-expanded="false" aria-controls="flight-help">Flight guide</button>
         <button class="quiet-button" id="toggle-controls" aria-expanded="true" aria-controls="flight-controls">Controls</button>
       </nav>
@@ -61,6 +62,12 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
   const bindings: Binding[] = [];
   const listeners: (() => void)[] = [];
   const find = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
+  const fieldSelect = find<HTMLSelectElement>('#field-select');
+  fieldSelect.value = state.isCore ? 'core' : 'exterior';
+  fieldSelect.addEventListener('change', () => {
+    const url = new URL(location.href); url.searchParams.set('field', fieldSelect.value); location.assign(url);
+  });
+
   const on = (element: HTMLElement, event: string, callback: EventListener) => {
     element.addEventListener(event, callback);
     listeners.push(() => element.removeEventListener(event, callback));
@@ -152,6 +159,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     v => { state.independentDust = v; }, hasFlow);
   slider(time, 'dustSpeed', 'Independent dust speed', .001, 1, .001, () => state.dustSpeed,
     v => { state.dustSpeed = v; }, v => `${v.toFixed(3)} × velocity`, () => hasFlow() && state.independentDust);
+  if (state.isCore) note(time, 'The timeline spans four decades of remaining time. Reset view frames the core at the selected time. Flight stays independent of contraction.');
   note(time, 'Independent mode moves dust even while time is paused. These paths differ from the physical time-dependent trajectories. Scrubbing reseeds the dust.');
 
   const panel = find('#flight-controls');
@@ -176,7 +184,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
   on(find('#reset-view'), 'click', () => actions.reset());
   on(find('#reseed-dust'), 'click', () => actions.reseed());
   on(play, 'click', () => { if (hasFlow()) state.playing = !state.playing; });
-  on(timeline, 'input', () => actions.scrub(Number(timeline.value)));
+  on(timeline, 'input', () => actions.scrub(state.isCore ? 1 - 10 ** (-Number(timeline.value)) : Number(timeline.value)));
 
   let lastStatus = '';
   let lastTelemetry = 0;
@@ -187,12 +195,14 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
       prompt.classList.toggle('is-flying', state.pointerLocked);
       find('#model-label').textContent = state.modelLabel;
       find('#model-description').textContent = state.modelDescription;
-      timeline.min = String(state.timeMin); timeline.max = String(state.timeMax);
-      timeline.step = String(Math.max((state.timeMax - state.timeMin) / 10000, 1e-7));
-      if (document.activeElement !== timeline) timeline.value = String(state.time);
+      timeline.min = String(state.isCore ? -Math.log10(1 - state.timeMin) : state.timeMin);
+      timeline.max = String(state.isCore ? -Math.log10(1 - state.timeMax) : state.timeMax);
+      timeline.step = state.isCore ? '.0001' : String(Math.max((state.timeMax - state.timeMin) / 10000, 1e-7));
+      if (document.activeElement !== timeline) timeline.value = String(state.isCore ? -Math.log10(1 - state.time) : state.time);
       timeline.disabled = !hasFlow();
-      find('#time-output').textContent = state.time.toFixed(4);
-      find('#clock-label').textContent = state.independentDust ? 'SIMULATION TIME · INDEPENDENT DUST' : 'SIMULATION TIME';
+      find('#time-output').textContent = state.isCore ? `t ${state.time.toFixed(6)} · remaining ${(1 - state.time).toExponential(2)}` : state.time.toFixed(4);
+      find('#clock-label').textContent = state.isCore ? 'CONCENTRATION · LOGARITHMIC TIMELINE' : state.independentDust ? 'SIMULATION TIME · INDEPENDENT DUST' : 'SIMULATION TIME';
+      timeline.setAttribute('aria-valuetext', `Time ${state.time.toFixed(6)}, remaining ${(1 - state.time).toExponential(2)}`);
       play.disabled = !hasFlow();
       play.textContent = state.playing ? 'Ⅱ' : '▶';
       play.setAttribute('aria-label', state.playing ? 'Pause simulation' : 'Play simulation');

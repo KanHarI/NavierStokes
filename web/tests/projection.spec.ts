@@ -9,7 +9,7 @@ interface ProjectionCase {
 }
 
 test('a uniform dust shell has no camera-centered brightness bias across field of view and rotation', async ({ page }, testInfo) => {
-  await page.goto('/?debug=1');
+  await page.goto('/?field=exterior&debug=1');
   await page.waitForFunction(() => {
     const app = (window as any).__observatory;
     return app && !app.state.loading;

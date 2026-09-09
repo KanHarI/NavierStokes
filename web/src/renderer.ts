@@ -9,21 +9,47 @@ const fieldGLSL = `
 uniform sampler2D uProfile;
 uniform vec4 uDomain;
 uniform vec4 uModel; // h, cInfinity, table zMax, table zMin
-uniform float uTime;
-uniform float uSingular;
+uniform vec2 uTauRange;
+uniform float uTau; // remaining time, computed in float64 before upload
+uniform int uCore;
+uniform vec3 uCoreDomain; // Lambda, Y max, eta max
+vec3 coreCoordinates(vec3 p,float tau){
+  float D=.5-uModel.x;
+  float qMax=tau/(1.-uCoreDomain.z*uCoreDomain.z);
+  if(tau<=0.||abs(p.z)>uCoreDomain.z*pow(qMax,D))return vec3(-1.);
+  float q=tau;
+  for(int i=0;i<6;i++)q=tau+p.z*p.z*pow(q,2.*uModel.x);
+  return vec3(uCoreDomain.x*dot(p.xy,p.xy)/(2.*q),p.z/pow(q,D),q);
+}
+bool coreValid(vec3 c){return c.z>0.&&c.x<=uCoreDomain.y&&abs(c.y)<=uCoreDomain.z;}
+vec4 coreProfile(vec2 point){
+  vec2 index=vec2(point.x/uCoreDomain.y,(point.y/uCoreDomain.z+1.)*.5)*vec2(textureSize(uProfile,0)-1);
+  ivec2 low=min(ivec2(floor(index)),textureSize(uProfile,0)-2);low=max(low,ivec2(0));
+  vec2 f=clamp(index-vec2(low),0.,1.);
+  return mix(mix(texelFetch(uProfile,low,0),texelFetch(uProfile,low+ivec2(1,0),0),f.x),
+    mix(texelFetch(uProfile,low+ivec2(0,1),0),texelFetch(uProfile,low+ivec2(1,1),0),f.x),f.y);
+}
 float profile(float z){
   float index=clamp((z-uModel.w)/(uModel.z-uModel.w),0.,1.)*float(textureSize(uProfile,0).x-1);
   int i=int(floor(index));int j=min(i+1,textureSize(uProfile,0).x-1);
   return mix(texelFetch(uProfile,ivec2(i,0),0).r,texelFetch(uProfile,ivec2(j,0),0).r,fract(index));
 }
-bool valid(vec3 p){float r=length(p.xy);return r>=uDomain.x&&r<=uDomain.y&&p.z>=uDomain.z&&p.z<=uDomain.w;}
-vec3 velocityAt(vec3 p,float time){
-  float r=length(p.xy);if(!valid(p))return vec3(0);
-  float z=4.*(uSingular-time)/(r*r);
+bool validAt(vec3 p,float tau){if(tau<uTauRange.x||tau>uTauRange.y)return false;if(uCore==1)return coreValid(coreCoordinates(p,tau));float r=length(p.xy);return r>=uDomain.x&&r<=uDomain.y&&p.z>=uDomain.z&&p.z<=uDomain.w;}
+bool valid(vec3 p){return validAt(p,uTau);}
+vec3 velocityAt(vec3 p,float tau){
+  if(tau<uTauRange.x||tau>uTauRange.y)return vec3(0);
+  if(uCore==1){
+    vec3 c=coreCoordinates(p,tau);if(!coreValid(c))return vec3(0);
+    vec4 f=coreProfile(c.xy);
+    float radial=f.z/(2.*c.z),rotation=pow(c.z,-1.-uModel.x)*f.x;
+    return vec3(radial*p.xy+rotation*vec2(-p.y,p.x),pow(c.z,-.5-uModel.x)*f.y);
+  }
+  float r=length(p.xy);if(!validAt(p,tau))return vec3(0);
+  float z=4.*tau/(r*r);
   float speed=uModel.y*pow(r*r/2.,-.5-uModel.x)*profile(z);
   return vec3(-p.y,p.x,0)*speed/r;
 }
-vec3 velocity(vec3 p){return velocityAt(p,uTime);}`;
+vec3 velocity(vec3 p){return velocityAt(p,uTau);}`;
 const updateVertex = `#version 300 es
 precision highp float;
 layout(location=0) in vec4 aParticle;
@@ -31,7 +57,7 @@ out vec4 nextParticle;
 ${fieldGLSL}
 uniform vec3 uShip;
 uniform vec2 uShell;
-uniform float uScale,uDelta,uWall,uSeed,uTimeStart,uTimeDelta;
+uniform float uScale,uDelta,uWall,uSeed,uTauStart,uTimeDelta;
 uniform int uSteps,uReseed;
 float random(inout uint seed){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return float(seed)/4294967295.;}
 vec3 spawn(inout uint seed){
@@ -46,9 +72,10 @@ void main(){
   if(!reborn){
     float step=uDelta/float(max(uSteps,1));
     for(int i=0;i<12;i++){if(i>=uSteps)break;
-      float t=uTimeStart+uTimeDelta*float(i)/float(uSteps);
+      float t=uTauStart-uTimeDelta*float(i)/float(uSteps);
+      if(!validAt(p,t)){reborn=true;break;}
       vec3 v=velocityAt(p,t);vec3 midpoint=p+v*step*.5;
-      if(!valid(midpoint)){reborn=true;break;}p+=velocityAt(midpoint,t+.5*uTimeDelta/float(uSteps))*step;}
+      if(!validAt(midpoint,t-.5*uTimeDelta/float(uSteps))){reborn=true;break;}p+=velocityAt(midpoint,t-.5*uTimeDelta/float(uSteps))*step;}
     float d=length(p-uShip)/uScale;
     reborn=reborn||!valid(p)||d<uShell.x||d>uShell.y;
   }
@@ -201,9 +228,12 @@ export class Renderer {
     }
     gl.bindVertexArray(null); gl.bindBuffer(gl.ARRAY_BUFFER, null);
     this.profile = gl.createTexture()!;
-    if (field.table.count > gl.getParameter(gl.MAX_TEXTURE_SIZE)) throw new Error('This GPU cannot hold the scientific lookup texture.');
+    const core = field.manifest.core;
+    const width = core ? core.yCount : field.table!.count, height = core ? core.etaCount : 1;
+    if (Math.max(width, height) > gl.getParameter(gl.MAX_TEXTURE_SIZE)) throw new Error('This GPU cannot hold the scientific lookup texture.');
     gl.bindTexture(gl.TEXTURE_2D, this.profile);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, field.table.count, 1, 0, gl.RED, gl.FLOAT, new Float32Array(field.table.values));
+    gl.texImage2D(gl.TEXTURE_2D, 0, core ? gl.RGBA32F : gl.R32F, width, height, 0,
+      core ? gl.RGBA : gl.RED, gl.FLOAT, field.core ?? new Float32Array(field.table!.values));
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -263,9 +293,12 @@ export class Renderer {
     const gl = this.gl; const s = this.state; const m = this.field.manifest; const t = this.field.table;
     this.texture(p, 'uProfile', this.profile, 0);
     gl.uniform4f(this.uniform(p, 'uDomain'), m.domain.radialMin, m.domain.radialMax, m.domain.axialMin, m.domain.axialMax);
-    gl.uniform4f(this.uniform(p, 'uModel'), m.model.h, m.model.cInfinity, t.zMax, t.zMin);
+    gl.uniform4f(this.uniform(p, 'uModel'), m.model.h, m.model.cInfinity, t?.zMax ?? 1, t?.zMin ?? 0);
+    gl.uniform2f(this.uniform(p, 'uTauRange'), m.time.singular - m.time.end, m.time.singular - m.time.start);
+    this.i(p, 'uCore', m.core ? 1 : 0);
+    gl.uniform3f(this.uniform(p, 'uCoreDomain'), m.model.lambda ?? 1, m.core?.yMax ?? 1, m.core?.etaMax ?? .9);
     gl.uniform3fv(this.uniform(p, 'uShip'), s.ship.position);
-    this.f(p, 'uTime', s.time); this.f(p, 'uSingular', m.time.singular); this.f(p, 'uScale', s.ship.scale);
+    this.f(p, 'uTau', m.time.singular - s.time); this.f(p, 'uScale', s.ship.scale);
   }
   reseed() { this.resetPending = true; }
 
@@ -279,7 +312,7 @@ export class Renderer {
     s.particleCount = this.count;
     if (s.ship.scale / this.previousScale > 1.3 || s.ship.scale / this.previousScale < .77) this.resetPending = true;
     this.previousScale = s.ship.scale;
-    const stepLimit = .0025;
+    const stepLimit = this.field.manifest.core ? Math.min(.0025, .001 * (1 - s.time)) : .0025;
     const steps = Math.min(12, Math.max(1, Math.ceil(Math.abs(transportDelta) / stepLimit)));
     const delta = Math.sign(transportDelta) * Math.min(Math.abs(transportDelta), 12 * stepLimit);
     if (Math.abs(transportDelta) > 12 * stepLimit) s.status = 'Dust transport limited to preserve integration accuracy';
@@ -287,7 +320,7 @@ export class Renderer {
     gl.useProgram(this.updateProgram.program); this.common(this.updateProgram);
     gl.uniform2f(this.uniform(this.updateProgram, 'uShell'), Math.max(.001, s.near * .8), s.far * 1.1);
     this.f(this.updateProgram, 'uDelta', delta); this.f(this.updateProgram, 'uWall', wallDelta);
-    this.f(this.updateProgram, 'uTimeStart', s.time - timeDelta); this.f(this.updateProgram, 'uTimeDelta', timeDelta);
+    this.f(this.updateProgram, 'uTauStart', this.field.manifest.time.singular - s.time + timeDelta); this.f(this.updateProgram, 'uTimeDelta', timeDelta);
     this.f(this.updateProgram, 'uSeed', this.seed++); this.i(this.updateProgram, 'uSteps', steps);
     this.i(this.updateProgram, 'uReseed', this.resetPending ? 1 : 0); this.resetPending = false;
     gl.bindVertexArray(this.updateVAOs[this.index]); gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.feedback);
@@ -355,7 +388,7 @@ export class Renderer {
   audit() {
     const gl = this.gl; const particles = new Float32Array(Math.min(this.count, 128) * 4);
     gl.bindBuffer(gl.COPY_READ_BUFFER, this.particleBuffers[this.index]); gl.getBufferSubData(gl.COPY_READ_BUFFER, 0, particles); gl.bindBuffer(gl.COPY_READ_BUFFER, null);
-    return { glError: gl.getError(), finiteParticles: [...particles].every(Number.isFinite), particleSamples: [...particles],
+    return { lightMeasuredAt: this.lastAnalysis, glError: gl.getError(), finiteParticles: [...particles].every(Number.isFinite), particleSamples: [...particles],
       lightInput: this.lightInput, lightOutput: this.lightOutput, residualOverflow: this.residualOverflow };
   }
 
@@ -372,7 +405,7 @@ export class Renderer {
       gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
       gl.bindBuffer(gl.ARRAY_BUFFER, output); gl.bufferData(gl.ARRAY_BUFFER, 16, gl.STREAM_READ);
       gl.bindBuffer(gl.ARRAY_BUFFER, null);
-      gl.useProgram(program.program); this.common(program); this.f(program, 'uTime', time);
+      gl.useProgram(program.program); this.common(program); this.f(program, 'uTau', this.field.manifest.time.singular - time);
       gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.feedback); gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, output);
       gl.enable(gl.RASTERIZER_DISCARD); gl.beginTransformFeedback(gl.POINTS); gl.drawArrays(gl.POINTS, 0, 1); gl.endTransformFeedback();
       gl.disable(gl.RASTERIZER_DISCARD); gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null); gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);

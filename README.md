@@ -2,7 +2,7 @@
 
 Explore a concentrating fluid vortex from a freely moving, resizable spacecraft. Luminous dust reveals the flow; the spacecraft moves independently of it. Precomputed scientific fields supply the motion, and a WebGL 2 viewer renders the experience in the browser.
 
-**Status: first experimental implementation.** A working WebGL 2 viewer now samples a small precomputed **heat-exterior field** from Appendix A of the paper. The contracting core and full blowup construction have **not** been reconstructed. This is a source-based numerical checkpoint and an interactive optics/navigation prototype, not a visualization of a completed blowup simulation.
+**Status: contracting local core checkpoint.** The WebGL 2 viewer now opens on a numerical solution of the paper's coupled **local leading core equations**, showing inward radial flow and axial stretching. Its finite diagnostic parameters and pressure have **not been matched to the exterior**. The full corrected blowup construction remains unfinished; this local calculation does not establish the paper's global result or smooth forcing.
 
 ## Run locally
 
@@ -13,10 +13,11 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite. The viewer starts paused. Press play to run synchronized tracers, or enable **Independent dust transport** to see movement through a frozen field. Use **Click to fly**, then Escape to return to the controls.
+Open the local URL printed by Vite (normally `http://127.0.0.1:5173/`). The viewer starts paused on the local core. The field selector switches to the separate heat-exterior checkpoint (`?field=exterior`). The core timeline spans four decades of remaining time, ending at `t=0.9999`. After scrubbing, **Reset view** frames the contracted core at that time; ordinary flight and scale remain independent of the flow. Press play to run synchronized tracers, or enable **Independent dust transport** to see movement through a frozen field. Use **Click to fly**, then Escape to return to the controls.
 
 ```sh
-npm run data:preview       # Regenerate the ~54 KB reference dataset
+npm run data:core          # Regenerate the ~544 KB core dataset (~23 seconds)
+npm run data:preview       # Regenerate the ~54 KB exterior reference dataset
 npm run test:science       # Numerical and dataset checks
 npm run build             # Type-check and produce the static dist/ site
 npx playwright install chromium
@@ -27,23 +28,24 @@ npm run test:browser      # WebGL, controls, integrity, and light tests
 
 ## What is implemented
 
-- A reproducible, standard-library Python reference for the paper's isolated exterior heat-flow family, with pressure evaluation and numerical checks.
-- A checksum-verified 2,049-sample profile table, reconstructed into Cartesian velocity in the browser. No full 3D time-volume download is required.
+- A standard-library Python solver for the coupled local core equations using radial Taylor series and axial Taylor jets, with analytic velocity, pressure, derivatives, and the full residual acceleration of this approximation.
+- A separate reference for the paper's isolated exterior heat-flow family.
+- A checksum-verified 129 × 257 core profile table (530 KB binary) with four channels, plus a 2,049-sample exterior table. Axisymmetry and similarity coordinates reconstruct space and time without a full 3D time-volume download.
 - GPU tracer integration and local particle recycling; local-axis spacecraft movement, roll, and multiplicative scale.
 - Adjustable perspective, shell distances, focus, Gaussian blur, ISO, density, color, and time/dust controls.
 - Linear HDR lights and bounded multiscale redistribution of excess luminance, with a visible residual-overexposure indicator.
 
-See [the mathematical specification](docs/mathematics.md) and [scientific validation report](docs/validation/science-preview.md) for the actual represented equations and errors. The preview is pure azimuthal motion on a chosen annulus. It does not contain inward collapse, matching to the core, the corrective disturbances, localization, or startup from rest. Empty regions outside the dataset are not stationary fluid.
+See the [core mathematical contract](docs/core-mathematics.md), [parameter limitations](docs/core-parameters.md), and [core validation report](docs/validation/science-core.md). The local calculation is convergent on its declared patch, but the selected parameters fail a continuation gate used for global assembly in the paper. The [exterior specification](docs/mathematics.md) and [exterior report](docs/validation/science-preview.md) document the earlier checkpoint. The two fields are separate: annular matching, corrective disturbances, localization, and startup from rest remain open. Empty regions outside each dataset are unavailable fluid data. External acceleration is validated offline; it is not exported as a browser force field. The [exported-field divergence audit](docs/validation/core-lookup.md) measures interpolation error separately: RMS divergence is 0.27% of local strain on the sampled queries.
 
 The current renderer is a prototype: particles do not retain global identities, large changes reseed the local population, and half-float light buffers introduce measurable rounding. The browser reports excess brightness that cannot be redistributed within the bounded pass budget. Manual exposure never changes automatically.
 
-![The running WebGL exterior-field prototype](docs/preview.png)
+![The running WebGL local-core preview](docs/core-preview.png)
 
 ## Scientific purpose
 
 The project is motivated by OpenAI's September 8, 2026 post, [On the Navier–Stokes Millennium Prize Problem](https://openai.com/index/navier-stokes-solution/), and the accompanying [Finite Time Blowup for Navier–Stokes paper](https://cdn.openai.com/pdf/32d9f210-8b73-45e0-91bc-82a30aef8a9a/navier-stokes.pdf). The authors describe a forced incompressible flow with finite-time velocity blowup and bounded kinetic energy. The accompanying [Lean formalization repository](https://github.com/openai/NavierStokesAndEuler) is a reference, not a dependency of the planned viewer.
 
-The next scientific target is to reconstruct the paper's **leading-flow approximation**, subject to the remaining feasibility work. The complete construction includes oscillatory disturbances and corrections essential to its forcing properties. A visualization of the leading flow must not be presented as a reproduction or verification of that complete result. The current exterior checkpoint is a smaller component of that target.
+The next scientific target is to reconstruct the paper's **leading-flow approximation**, subject to the remaining feasibility work. The complete construction includes oscillatory disturbances and corrections essential to its forcing properties. A visualization of the leading flow must not be presented as a reproduction or verification of that complete result. The local core and isolated exterior are separately validated components toward that target; they have not been joined.
 
 We will compute and explore a finite, resolved interval before the singular time. A finite dataset cannot contain an actual infinity. The viewer will disclose the represented model, valid domain, time interval, and resolution limits.
 

@@ -1,0 +1,103 @@
+{
+  "scope": "Local axis equations only; diagnostic pressure, no annular/exterior matching",
+  "parameters": {
+    "h": 0.005,
+    "j0": 0.025,
+    "pressure_scale": 4.0,
+    "sigma": 0.5,
+    "lambda_": 16.0,
+    "axis_amplitude": 0.25
+  },
+  "parameterChecks": {
+    "scope": "local analytic axis datum; outer pressure and moments unmatched",
+    "h_root_eta": -0.005561716315493014,
+    "Z_at_H_zero": 0.1325219635184188,
+    "minimum_negative_W_sampled": 2.93525,
+    "B2_delta": 0.0331304908796047,
+    "Z_roots": [
+      -0.8571045658349645,
+      -0.002555047976874076,
+      0.853384469545641
+    ],
+    "minimum_chi_near_Z_zero_sampled": 0.0004108140658893728,
+    "B2_sampled_condition": false,
+    "log_C": 1.3907381661379357,
+    "global_matching_certified": false,
+    "analytic_convergence_threshold_certified": false
+  },
+  "radialTaylorOrder": 22,
+  "referenceRadialTaylorOrder": 26,
+  "referenceQueryCount": 63,
+  "minimumSampledPhi": 0.21407591399616058,
+  "radialOrderMaximumAbsoluteDifference": {
+    "F": 2.7755575615628914e-17,
+    "U": 0.0,
+    "v0": 0.0,
+    "Pi": 0.0
+  },
+  "maximumRelativeEquationResiduals": {
+    "angular": 2.9590045326659787e-13,
+    "axial": 2.8208025721960142e-14,
+    "pressure": 1.4833582283492271e-15
+  },
+  "interpolationRefinement": [
+    {
+      "yCount": 129,
+      "etaCount": 257,
+      "maximumAbsoluteErrorByChannel": {
+        "F": 0.00015636671954485926,
+        "U": 0.00010056596929031159,
+        "v0": 0.0004946324443242389,
+        "Pi": 9.719460451362849e-05
+      },
+      "maximumNormalizedErrorByChannel": {
+        "F": 0.0006256611711241996,
+        "U": 2.7742336355948024e-05,
+        "v0": 6.863259020881214e-05,
+        "Pi": 2.4298651128407123e-05
+      }
+    }
+  ],
+  "interpolationGridRefinement": [
+    {
+      "yCount": 33,
+      "etaCount": 65,
+      "maximumNormalizedErrorByChannel": {
+        "F": 0.016846623560603412,
+        "U": 0.000495322644580237,
+        "v0": 0.0010994367743015208,
+        "Pi": 0.0003980415107277535
+      }
+    },
+    {
+      "yCount": 65,
+      "etaCount": 129,
+      "maximumNormalizedErrorByChannel": {
+        "F": 0.006505543283663983,
+        "U": 0.0001304818982119802,
+        "v0": 0.00023322280683118143,
+        "Pi": 9.501875652073721e-05
+      }
+    },
+    {
+      "yCount": 129,
+      "etaCount": 257,
+      "maximumNormalizedErrorByChannel": {
+        "F": 0.0006256611711241996,
+        "U": 2.7742336355948024e-05,
+        "v0": 6.863259020881214e-05,
+        "Pi": 2.4298651128407123e-05
+      }
+    }
+  ],
+  "channelNormalization": "Maximum absolute value of each channel on the exported grid",
+  "fixedPointQTenIterationsMaximumRelativeError": 1.5043305143238036e-16,
+  "thresholds": {
+    "channelNormalizedInterpolation": 0.005,
+    "relativeEquationResidual": 1e-06,
+    "absoluteRadialOrderDifference": 1e-07
+  },
+  "generationSeconds": 22.497362,
+  "profileBytes": 530448,
+  "totalDatasetBytes": 543690
+}

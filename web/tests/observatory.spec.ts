@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function loadObservatory(page: Page) {
-  await page.goto('/?debug=1');
+  await page.goto('/?field=exterior&debug=1');
   await page.waitForFunction(() => {
     const app = (window as any).__observatory;
     return app && !app.state.loading;
@@ -95,7 +95,7 @@ test('reports unsupported WebGL instead of leaving a blank or loading screen', a
       return (original as any).call(this, type, ...args);
     } as typeof original;
   });
-  await page.goto('/?debug=1');
+  await page.goto('/?field=exterior&debug=1');
   await expect(page.getByRole('alert')).toHaveText(/WebGL\s*2.*(?:required|unavailable|support)/i);
   await expect(page.getByRole('alert')).toBeVisible();
 });
@@ -109,7 +109,7 @@ test('rejects a corrupted field chunk and disables playback', async ({ page }) =
     expect(changed).not.toBe(body);
     await route.fulfill({ response, body: changed });
   });
-  await page.goto('/?debug=1');
+  await page.goto('/?field=exterior&debug=1');
   await expect(page.getByRole('alert')).toHaveText(/checksum.*(?:match|mismatch)/i);
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.locator('#toggle-play')).toBeDisabled();
@@ -161,7 +161,7 @@ test('browser velocity reconstruction agrees with independent integral samples a
   await loadObservatory(page);
   const report = await page.evaluate(async () => {
     const { loadField, sampleVelocity } = await import('/src/field.ts');
-    const field = await loadField();
+    const field = await loadField('exterior');
     const reference = await (await fetch('/datasets/velocity-reference.json')).json();
     let largestToleranceFraction = 0;
     let largestGPUToleranceFraction = 0;

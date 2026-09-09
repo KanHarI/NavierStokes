@@ -2,7 +2,7 @@
 
 ## 1. Status, objective, and authorization
 
-This document records the agreed design and proposed order of implementation. On September 9, 2026 the user authorized implementation and subagents. The repository now contains an initial heat-exterior scientific checkpoint and a WebGL 2 prototype; see README.md for the runnable commands and actual feature inventory. Requirements and exit conditions below remain targets unless explicitly reported as validated.
+This document records the agreed design and proposed order of implementation. On September 9, 2026 the user authorized implementation and subagents. The repository now contains separate local-core and heat-exterior scientific checkpoints and a WebGL 2 prototype; see README.md for the runnable commands and actual feature inventory. Requirements and exit conditions below remain targets unless explicitly reported as validated.
 
 The objective is a hosted browser experience in which a freely moving, resizable spacecraft explores precomputed fluid fields through luminous tracer particles. The first scientific target is a documented numerical reconstruction of the source paper's leading flow, not a claim to reproduce the complete corrected construction or to prove blowup numerically.
 
@@ -10,7 +10,9 @@ The user has authorized writing these documents, creating a public GitHub reposi
 
 ### Current checkpoint
 
-The source's core profiles require further constructive choices and matching work. The first implementation therefore evaluates the explicitly computable heat-exterior family from Appendix A on a diagnostic annulus. Its chosen parameters are not certified parameters of an assembled core/exterior construction. It supplies real source-based exterior swirl for testing the browser while core reconstruction remains open. Mathematical details, limitations, and measured lookup errors are recorded in docs/mathematics.md and docs/validation/science-preview.md.
+The default viewer now reconstructs a convergent local solution of the actual coupled leading core equations (4.13/B.15), with diagnostic analytic axis pressure and finite parameters. The radial Taylor solver, independent physical residual checks, and 129 × 257 compressed-coordinate table are implemented. The preview ends at t=0.9999, occupies about 544 KB, and generates in about 23 seconds. See docs/core-mathematics.md, docs/core-parameters.md, and docs/validation/science-core.md.
+
+Global matching remains open. In particular, the selected broad angular parameter fails a continuation gate in Appendix B, and the pressure is a local diagnostic datum rather than the outer-matched schedule. The existing heat exterior remains a separate selectable checkpoint. Neither model is presented as a globally assembled leading vortex or the complete corrected construction. The next scientific work is constructive outer scheduling, admissible continuation parameters, and annular matching with their measured stress conditions.
 
 The small generator and browser do not exhaust the final one-hour computation budget. No full high-resolution run or hosted deployment has been performed. The first checkpoint does not complete Milestone 1's full leading-flow feasibility requirement or authorize labeling the viewer a completed blowup simulation.
 
