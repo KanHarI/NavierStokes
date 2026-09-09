@@ -1,5 +1,5 @@
 /** Bounded particle work without changing the requested simulation clock. */
-export const MAX_TRANSPORT_STEPS = 256;
+export const MAX_TRANSPORT_STEPS = 4096;
 export const CORE_STEP_FRACTION = .0025;
 const EXTERIOR_STEP = .0025;
 
@@ -38,7 +38,7 @@ export interface TransportPlan {
 export function planTransport(request: TransportRequest): TransportPlan {
   const { isCore, tauEnd, timeDelta, transportDelta } = request;
   const fraction = request.coreStepFraction ?? CORE_STEP_FRACTION;
-  const maxSteps = request.maxSteps ?? MAX_TRANSPORT_STEPS;
+  const maxSteps = request.maxSteps ?? 256;
   if (![tauEnd, timeDelta, transportDelta, fraction].every(Number.isFinite)
       || tauEnd <= 0 || timeDelta < 0 || fraction <= 0 || fraction > CORE_STEP_FRACTION
       || !Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > MAX_TRANSPORT_STEPS) {

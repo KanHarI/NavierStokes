@@ -1,10 +1,11 @@
+import { sampleExtended } from './extended';
 export interface FieldManifest {
   schemaVersion: number;
   id: string;
   status: string;
   velocityAvailable: boolean;
   label?: string;
-  model: { h: number; cInfinity: number; viscosity: number; scope: string; lambda?: number };
+  model: { h: number; cInfinity: number; viscosity: number; scope: string; lambda?: number; cutoffInner?: number; cutoffOuter?: number };
   domain: { radialMin: number; radialMax: number; axialMin: number; axialMax: number };
   time: { start: number; end: number; singular: number; playbackAvailable: boolean };
   core?: { yCount: number; etaCount: number; yMax: number; etaMax: number; channels: string[] };
@@ -19,7 +20,7 @@ export interface HeatTable {
   cInfinity: number;
   values: number[];
 }
-export interface FieldData { manifest: FieldManifest; table: HeatTable | null; core: Float32Array | null }
+export interface FieldData { manifest: FieldManifest; table: HeatTable | null; core: Float32Array | null; swirl?: Float32Array | null }
 
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -27,25 +28,27 @@ const finite = (value: unknown): value is number => typeof value === 'number' &&
 
 /** Validate the exact model supported by the current CPU and GPU samplers. */
 export function validateManifest(value: unknown): FieldManifest {
-  if (!record(value) || value.schemaVersion !== 1 || !['heat-exterior-checkpoint', 'local-core-checkpoint'].includes(String(value.status)) ||
+  if (!record(value) || value.schemaVersion !== 1 || !['heat-exterior-checkpoint', 'local-core-checkpoint', 'extended-flow-checkpoint'].includes(String(value.status)) ||
       value.velocityAvailable !== true || typeof value.id !== 'string') {
     throw new Error('A supported, validated velocity field is not available.');
   }
-  const isCore = value.status === 'local-core-checkpoint';
+  const isExtended = value.status === 'extended-flow-checkpoint';
+  const isCore = value.status === 'local-core-checkpoint' || isExtended;
   const { model, domain, time, chunks } = value;
   if (!isCore && value.core !== undefined) throw new Error('Unexpected core metadata on exterior dataset.');
   if (isCore) {
     const c = value.core;
     if (!record(c) || !finite(c.yCount) || !Number.isSafeInteger(c.yCount) || c.yCount < 2 || c.yCount > 4096 ||
         !finite(c.etaCount) || !Number.isSafeInteger(c.etaCount) || c.etaCount < 2 || c.etaCount > 4096 ||
-        !finite(c.yMax) || c.yMax <= 0 || !finite(c.etaMax) || c.etaMax <= 0 || c.etaMax > .9 ||
-        JSON.stringify(c.channels) !== JSON.stringify(['F', 'U', 'v0', 'Pi']) ||
+        !finite(c.yMax) || c.yMax <= 0 || !finite(c.etaMax) || c.etaMax <= 0 || (isExtended ? c.etaMax !== 1 : c.etaMax > .9) ||
+        JSON.stringify(c.channels) !== JSON.stringify(isExtended ? ['J', 'J_Y', 'J_eta', 'J_Yeta'] : ['F', 'U', 'v0', 'Pi']) ||
         !record(model) || !finite(model.lambda) || model.lambda < 1) throw new Error('Invalid local core coordinates.');
   }
   if (!record(model) || !finite(model.h) || !(model.h > 0 && model.h < .01) ||
       !finite(model.cInfinity) || model.cInfinity <= 0 || model.viscosity !== 1 || typeof model.scope !== 'string') {
     throw new Error('Unsupported heat-exterior model parameters.');
   }
+  if (isExtended && (!finite(model.cutoffInner) || !finite(model.cutoffOuter) || model.cutoffInner <= 0 || model.cutoffOuter <= model.cutoffInner)) throw new Error('Invalid physical localization.');
   if (!record(domain) || !finite(domain.radialMin) || !finite(domain.radialMax) ||
       !finite(domain.axialMin) || !finite(domain.axialMax) ||
       !((isCore ? domain.radialMin === 0 : domain.radialMin > 0) && domain.radialMax > domain.radialMin && domain.axialMax > domain.axialMin)) {
@@ -79,16 +82,17 @@ export function validateHeatTable(value: unknown, manifest: FieldManifest): Heat
   if (Math.abs(values[0] - 1) > 1e-6 || values.some((v, i) => i > 0 && v > values[i - 1] + 1e-12)) {
     throw new Error('Heat-profile normalization or monotonicity is invalid.');
   }
-  const requiredMax = 4 * (manifest.time.singular - manifest.time.start) / manifest.domain.radialMin ** 2;
+  const requiredMax = manifest.status === 'extended-flow-checkpoint' ? 2 * manifest.model.lambda! / manifest.core!.yMax : 4 * (manifest.time.singular - manifest.time.start) / manifest.domain.radialMin ** 2;
   if (requiredMax > value.zMax) throw new Error('Heat-profile lookup does not cover the declared space and time domain.');
   return value as unknown as HeatTable;
 }
 
-export async function loadField(kind: 'core' | 'exterior' = 'core'): Promise<FieldData> {
+export async function loadField(kind: 'core' | 'exterior' | 'extended' = 'extended'): Promise<FieldData> {
   const base = new URL(`${import.meta.env.BASE_URL}datasets/`, window.location.href);
-  const response = await fetch(new URL(kind === 'core' ? 'core-manifest.json' : 'manifest.json', base));
+  const response = await fetch(new URL(kind === 'extended' ? 'extended-manifest.json' : kind === 'core' ? 'core-manifest.json' : 'manifest.json', base));
   if (!response.ok) throw new Error(`Dataset manifest could not load (${response.status}).`);
   const manifest = validateManifest(await response.json());
+  if (manifest.status === 'extended-flow-checkpoint') return loadExtendedChunks(manifest, base);
   const chunk = manifest.chunks.find(c => c.kind === (manifest.core ? 'core-profile' : 'heat-profile'));
   if (!chunk) throw new Error('Dataset is missing its heat-profile chunk.');
   const url = new URL(chunk.url, base);
@@ -119,6 +123,7 @@ export async function loadField(kind: 'core' | 'exterior' = 'core'): Promise<Fie
 export function sampleVelocity(field: FieldData, p: readonly number[], time: number): [number, number, number] | null {
   const { domain, model, time: interval } = field.manifest;
   if (p.length !== 3 || !p.every(Number.isFinite) || !Number.isFinite(time)) return null;
+  if (field.manifest.status === 'extended-flow-checkpoint') return sampleExtended(field, p, time);
   if (field.core) return sampleCore(field, p, time);
   const rawRadius = Math.hypot(p[0], p[1]);
   if (!Number.isFinite(rawRadius)) return null;
@@ -166,4 +171,37 @@ function sampleCore(field: FieldData, p: readonly number[], time: number): [numb
   };
   const radial = channel(2) / (2 * q), rotation = q ** (-1 - model.h) * channel(0);
   return [radial * p[0] - rotation * p[1], radial * p[1] + rotation * p[0], q ** (-.5 - model.h) * channel(1)];
+}
+
+async function loadExtendedChunks(manifest: FieldManifest, base: URL): Promise<FieldData> {
+  const kinds = ['core-profile', 'core-swirl', 'heat-profile'];
+  const chunks = await Promise.all(kinds.map(async kind => {
+    const matches = manifest.chunks.filter(c => c.kind === kind);
+    if (matches.length !== 1) throw new Error(`Missing or repeated ${kind} chunk.`);
+    const chunk = matches[0], url = new URL(chunk.url, base);
+    if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname)) throw new Error('Dataset chunk is outside its directory.');
+    const response = await fetch(url); if (!response.ok) throw new Error(`Field table could not load (${response.status}).`);
+    const bytes = await response.arrayBuffer();
+    const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(x => x.toString(16).padStart(2, '0')).join('');
+    if (bytes.byteLength !== chunk.bytes || hash !== chunk.sha256) throw new Error('Dataset checksum or byte count does not match its manifest.');
+    return bytes;
+  }));
+  const count = manifest.core!.yCount * manifest.core!.etaCount;
+  const floats = (bytes: ArrayBuffer, length: number) => {
+    if (bytes.byteLength !== length * 4) throw new Error('Invalid extended profile size.');
+    const view = new DataView(bytes), values = new Float32Array(length);
+    for (let i = 0; i < length; i++) { values[i] = view.getFloat32(i*4, true); if (!Number.isFinite(values[i])) throw new Error('Invalid extended profile value.'); }
+    return values;
+  };
+  const core = floats(chunks[0], count * 4), swirl = floats(chunks[1], count);
+  if (swirl.some(value => value <= 0)) throw new Error('Extended swirl must remain positive.');
+  const c = manifest.core!;
+  for (let row = 0; row < c.etaCount; row++) {
+    const axis = row*c.yCount*4, exterior = (row*c.yCount+c.yCount-1)*4;
+    if (core[axis] !== 0 || core[axis+2] !== 0 || core.slice(exterior, exterior+4).some(value => value !== 0)) {
+      throw new Error('Extended primitive has an invalid axis or exterior join.');
+    }
+  }
+  const table = validateHeatTable(JSON.parse(new TextDecoder().decode(chunks[2])), manifest);
+  return { manifest, core, swirl, table };
 }

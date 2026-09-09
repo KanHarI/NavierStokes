@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 test('linear and logarithmic clocks have predictable rates and reach the finite endpoint', async ({ page }) => {
-  await page.goto('/?debug=1');
+  await page.goto('/?field=core&debug=1');
   const result = await page.evaluate(async () => {
     const { advanceTime, timelinePosition, timeAtPosition } = await import('/src/time.ts');
     const end = .9999;
@@ -38,7 +38,7 @@ test('actual viewer clock stays linear near the endpoint and speed/mode controls
       callbacks.forEach(cb => cb(now));
     };
   });
-  await page.goto('/?debug=1');
+  await page.goto('/?field=core&debug=1');
   await expect.poll(() => page.evaluate(() => Boolean((window as any).__observatory?.renderer))).toBe(true);
   const report = await page.evaluate(() => {
     const app = (window as any).__observatory, s = app.state;

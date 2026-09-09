@@ -3,6 +3,7 @@ export type Quat = [number, number, number, number];
 
 export interface AppState {
   isCore: boolean;
+  fieldKind: 'core' | 'exterior' | 'extended';
   ship: { position: Vec3; orientation: Quat; scale: number };
   movementSpeed: number;
   pointerLocked: boolean;
@@ -47,9 +48,11 @@ export interface Actions {
 }
 
 export function initialState(): AppState {
-  const isCore = new URLSearchParams(location.search).get('field') !== 'exterior';
+  const requested = new URLSearchParams(location.search).get('field');
+  const fieldKind = requested === 'core' || requested === 'exterior' ? requested : 'extended';
+  const isCore = fieldKind !== 'exterior';
   return {
-    isCore,
+    isCore, fieldKind,
     ship: { position: isCore ? [0, -.6, .15] : [0, -2.4, 0.6], orientation: [0.627,-0.0,0.0,0.779], scale: isCore ? .25 : 1 },
     movementSpeed: 0.5, pointerLocked: false,
     near: 2, far: 4, focus: 3, shellFade: 1, shellBokeh: 24, fov: 65, blur: 6, exposure: 0,

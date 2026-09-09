@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 test('adaptive substeps span the entire requested physical interval', async ({ page }) => {
-  await page.goto('/?debug=1');
+  await page.goto('/?field=core&debug=1');
   const results = await page.evaluate(async () => {
     const { planTransport, transportSubstep } = await import('/src/transport.ts');
     return [
@@ -31,7 +31,7 @@ test('adaptive substeps span the entire requested physical interval', async ({ p
 });
 
 test('integration overload reseeds at requested field time and only frozen dust can be limited', async ({ page }) => {
-  await page.goto('/?debug=1');
+  await page.goto('/?field=core&debug=1');
   const results = await page.evaluate(async () => {
     const { planTransport } = await import('/src/transport.ts');
     return {
@@ -58,7 +58,7 @@ test('integration overload reseeds at requested field time and only frozen dust 
 });
 
 test('geometric RK2 converges on an independently solvable contracting strain', async ({ page }, testInfo) => {
-  await page.goto('/?debug=1');
+  await page.goto('/?field=core&debug=1');
   const results = await page.evaluate(async () => {
     const { planTransport, transportSubstep } = await import('/src/transport.ts');
     // Incompressible strain with the same 1/tau growth as the core:

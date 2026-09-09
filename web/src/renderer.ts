@@ -1,5 +1,6 @@
 import type { AppState } from './types';
 import type { FieldData } from './field';
+import { EXTENDED_GLSL } from './extended-glsl';
 import { SHELL_GLSL, shellBounds } from './shell';
 import { planTransport, type TransportPlan } from './transport';
 
@@ -13,7 +14,8 @@ uniform vec3 uShip;
 uniform float uScale;
 uniform vec2 uOpticalShell;
 uniform float uShellFade,uBoundaryBlur;
-uniform sampler2D uProfile;
+uniform highp sampler2D uProfile,uSwirl,uHeat;
+uniform vec2 uCutoff;
 uniform vec4 uDomain;
 uniform vec4 uModel; // h, cInfinity, table zMax, table zMin
 uniform vec2 uTauRange;
@@ -37,14 +39,21 @@ vec4 coreProfile(vec2 point){
     mix(texelFetch(uProfile,low+ivec2(0,1),0),texelFetch(uProfile,low+ivec2(1,1),0),f.x),f.y);
 }
 float profile(float z){
+  if(uCore==2){
+    float index=clamp(z/uModel.z,0.,1.)*float(textureSize(uHeat,0).x-1);
+    int i=int(floor(index)),j=min(i+1,textureSize(uHeat,0).x-1);
+    return mix(texelFetch(uHeat,ivec2(i,0),0).r,texelFetch(uHeat,ivec2(j,0),0).r,fract(index));
+  }
   float index=clamp((z-uModel.w)/(uModel.z-uModel.w),0.,1.)*float(textureSize(uProfile,0).x-1);
   int i=int(floor(index));int j=min(i+1,textureSize(uProfile,0).x-1);
   return mix(texelFetch(uProfile,ivec2(i,0),0).r,texelFetch(uProfile,ivec2(j,0),0).r,fract(index));
 }
-bool validAt(vec3 p,float tau){if(tau<uTauRange.x||tau>uTauRange.y)return false;if(uCore==1)return coreValid(coreCoordinates(p,tau));float r=length(p.xy);return r>=uDomain.x&&r<=uDomain.y&&p.z>=uDomain.z&&p.z<=uDomain.w;}
+${EXTENDED_GLSL}
+bool validAt(vec3 p,float tau){if(tau<uTauRange.x||tau>uTauRange.y)return false;if(uCore==2)return !any(isnan(p))&&!any(isinf(p));if(uCore==1)return coreValid(coreCoordinates(p,tau));float r=length(p.xy);return r>=uDomain.x&&r<=uDomain.y&&p.z>=uDomain.z&&p.z<=uDomain.w;}
 bool valid(vec3 p){return validAt(p,uTau);}
 vec3 velocityAt(vec3 p,float tau){
   if(tau<uTauRange.x||tau>uTauRange.y)return vec3(0);
+  if(uCore==2)return extendedVelocity(p,tau);
   if(uCore==1){
     vec3 c=coreCoordinates(p,tau);if(!coreValid(c))return vec3(0);
     vec4 f=coreProfile(c.xy);
@@ -60,6 +69,7 @@ vec3 velocity(vec3 p){return velocityAt(p,uTau);}
 // Fade to zero while still INSIDE the available field. The last fraction
 // of each boundary layer is an invisible reservoir; no field is extrapolated.
 float fieldVisibility(vec3 p){
+  if(uCore==2)return valid(p)?1.:0.;
   if(!valid(p))return 0.;
   float margin;
   if(uCore==1){
@@ -110,9 +120,14 @@ vec3 spawnHidden(inout uint seed){
 void main(){
   uint seed=uint(gl_VertexID+1)*747796405u+uint(uSeed)*2891336453u+277803737u;
   vec3 p=aParticle.xyz;float age=aParticle.w;
-  bool reborn=uReseed==1||age<0.||gl_VertexID>=uNewFrom;
+  // Budget recovery must not remove stationary ambient dust. Explicit resets
+  // still refill the observation volume after navigation or time scrubbing.
+  bool stationary=uCore==2&&dot(p,p)>=uCutoff.y*uCutoff.y;
+  bool reborn=(uReseed==1&&(uFill==1||!stationary))||age<0.||gl_VertexID>=uNewFrom;
   if(!reborn){
-    for(int i=0;i<uSteps;i++){
+    bool heat=uCore==2&&!stationary&&uSteps>0&&extendedCoordinates(p,uTauStart).x>=uCoreDomain.y;
+    if(heat)p=heatOrbit(p,uTauStart,uTau,uDelta);
+    for(int i=0;i<uSteps&&!stationary&&!heat;i++){
       float decay=exp(-uGeometricDecay*float(i));
       float weight=uFirstWeight*decay;float step=uDelta*weight;
       float t=uGeometricDecay>0.?clamp(uTauStart*decay,uTau,uTauStart):uTauStart-uTimeDelta*float(i)/float(uSteps);
@@ -236,6 +251,8 @@ export class Renderer {
   private emptyVAO: WebGLVertexArrayObject;
   private feedback: WebGLTransformFeedback;
   private profile: WebGLTexture;
+  private swirlTexture: WebGLTexture | null = null;
+  private heatTexture: WebGLTexture | null = null;
   private targets: Target[] = [];
   private reductions: Target[] = [];
   private index = 0;
@@ -287,6 +304,17 @@ export class Renderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    if (field.swirl) {
+      const makeScalar = (data: Float32Array, width: number, height: number) => {
+        const texture = gl.createTexture()!; gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, width, height, 0, gl.RED, gl.FLOAT, data);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        return texture;
+      };
+      this.swirlTexture = makeScalar(field.swirl, width, height);
+      this.heatTexture = makeScalar(new Float32Array(field.table!.values), field.table!.count, 1);
+    }
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas); this.resize();
   }
@@ -341,10 +369,13 @@ export class Renderer {
   private common(p: Program) {
     const gl = this.gl; const s = this.state; const m = this.field.manifest; const t = this.field.table;
     this.texture(p, 'uProfile', this.profile, 0);
+    if (this.swirlTexture) this.texture(p, 'uSwirl', this.swirlTexture, 2);
+    if (this.heatTexture) this.texture(p, 'uHeat', this.heatTexture, 3);
+    gl.uniform2f(this.uniform(p, 'uCutoff'), m.model.cutoffInner ?? 4, m.model.cutoffOuter ?? 8);
     gl.uniform4f(this.uniform(p, 'uDomain'), m.domain.radialMin, m.domain.radialMax, m.domain.axialMin, m.domain.axialMax);
     gl.uniform4f(this.uniform(p, 'uModel'), m.model.h, m.model.cInfinity, t?.zMax ?? 1, t?.zMin ?? 0);
     gl.uniform2f(this.uniform(p, 'uTauRange'), m.time.singular - m.time.end, m.time.singular - m.time.start);
-    this.i(p, 'uCore', m.core ? 1 : 0);
+    this.i(p, 'uCore', this.field.swirl ? 2 : m.core ? 1 : 0);
     gl.uniform3f(this.uniform(p, 'uCoreDomain'), m.model.lambda ?? 1, m.core?.yMax ?? 1, m.core?.etaMax ?? .9);
     gl.uniform3fv(this.uniform(p, 'uShip'), s.ship.position);
     gl.uniform2f(this.uniform(p, 'uOpticalShell'), s.near, s.far);
@@ -366,7 +397,8 @@ export class Renderer {
     if (s.ship.scale / this.previousScale > 1.3 || s.ship.scale / this.previousScale < .77) this.resetPending = true;
     this.previousScale = s.ship.scale;
     const transport = planTransport({ isCore: !!this.field.manifest.core,
-      tauEnd: this.field.manifest.time.singular - s.time, timeDelta, transportDelta });
+      tauEnd: this.field.manifest.time.singular - s.time, timeDelta, transportDelta,
+      maxSteps: this.field.swirl ? 4096 : 256 });
     if (transport.reseed) s.status = 'Field time advanced · dust reseeded because this interval exceeds the integration budget';
     if (transport.limited) s.status = 'Frozen-field dust speed limited by the integration budget · field time unchanged';
     this.transportAudit = { ...transport, reseeded: this.resetPending || transport.reseed };
@@ -644,6 +676,6 @@ export class Renderer {
     [...this.targets, ...this.reductions].forEach(t => this.destroyTarget(t));
     this.programs.forEach(p => gl.deleteProgram(p.program)); this.particleBuffers.forEach(b => gl.deleteBuffer(b));
     [...this.updateVAOs, ...this.drawVAOs, this.emptyVAO].forEach(v => gl.deleteVertexArray(v));
-    gl.deleteTransformFeedback(this.feedback); gl.deleteTexture(this.profile);
+    gl.deleteTransformFeedback(this.feedback); gl.deleteTexture(this.profile); if (this.swirlTexture) gl.deleteTexture(this.swirlTexture); if (this.heatTexture) gl.deleteTexture(this.heatTexture);
   }
 }

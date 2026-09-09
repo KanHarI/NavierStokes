@@ -15,7 +15,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
         <span class="scope-badge" id="model-label"></span>
       </div>
       <nav class="header-actions" aria-label="Viewer tools">
-        <select id="field-select" aria-label="Scientific field"><option value="core">Local core</option><option value="exterior">Heat exterior</option></select>
+        <select id="field-select" aria-label="Scientific field"><option value="extended">Core & surroundings</option><option value="core">Isolated core</option><option value="exterior">Heat exterior</option></select>
         <button class="quiet-button" id="toggle-help" aria-expanded="false" aria-controls="flight-help">Flight guide</button>
         <button class="quiet-button" id="toggle-controls" aria-expanded="true" aria-controls="flight-controls">Controls</button>
       </nav>
@@ -64,7 +64,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
   const listeners: (() => void)[] = [];
   const find = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
   const fieldSelect = find<HTMLSelectElement>('#field-select');
-  fieldSelect.value = state.isCore ? 'core' : 'exterior';
+  fieldSelect.value = state.fieldKind;
   fieldSelect.addEventListener('change', () => {
     const url = new URL(location.href); url.searchParams.set('field', fieldSelect.value); location.assign(url);
   });

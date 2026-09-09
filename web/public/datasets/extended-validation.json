@@ -1,0 +1,195 @@
+{
+  "referenceQueryCount": 170,
+  "maximumAbsoluteProfileErrors": {
+    "J": 1.2799161568100015e-07,
+    "J_Y": 1.7236763921096854e-05,
+    "J_eta": 1.1632860999588601e-05,
+    "J_Yeta": 0.00142412154772242,
+    "F": 0.0008095413879303792
+  },
+  "maximumNormalizedVelocityError": 0.00015470831778431184,
+  "worstVelocityQuery": {
+    "Y": 5.386417960000131,
+    "eta": -0.002684270279999623,
+    "position": [
+      0.7650211707706442,
+      0.2967235300287613,
+      -0.002684270279999623
+    ],
+    "expected": [
+      -3.1251997408844603,
+      -1.0400751954428662,
+      0.015087433444453128
+    ],
+    "actual": [
+      -3.1249559203891417,
+      -1.040693111356714,
+      0.015087417291981287
+    ]
+  },
+  "velocityErrorNormalization": "Euclidean error/(1+reference speed), nondimensional",
+  "divergenceChecks": [
+    {
+      "position": [
+        0.13,
+        0.09,
+        0.08
+      ],
+      "time": 0.5,
+      "absoluteDivergence": 2.162803269811775e-09,
+      "normalizedDivergence": 1.1845440594942223e-10
+    },
+    {
+      "position": [
+        0.5,
+        -0.15,
+        0.1
+      ],
+      "time": 0.7,
+      "absoluteDivergence": 3.1815488199526953e-07,
+      "normalizedDivergence": 5.421158170143788e-09
+    },
+    {
+      "position": [
+        1.1,
+        0.2,
+        0.3
+      ],
+      "time": 0.3,
+      "absoluteDivergence": 1.6511491907067466e-07,
+      "normalizedDivergence": 2.8053636120096623e-09
+    },
+    {
+      "position": [
+        4.5,
+        0.1,
+        1.0
+      ],
+      "time": 0.5,
+      "absoluteDivergence": 6.51649686902317e-14,
+      "normalizedDivergence": 6.515685454026039e-14
+    },
+    {
+      "position": [
+        0.003,
+        0.002,
+        0.001
+      ],
+      "time": 0.9999,
+      "absoluteDivergence": 3.9861450204625726e-05,
+      "normalizedDivergence": 3.830538187350331e-10
+    }
+  ],
+  "pressureMomentChecks": [
+    {
+      "eta": -1.0,
+      "addedAnnularPressureMoment": 0.9997183522949807,
+      "basePressureMoment": 0.0002816477050192866,
+      "quadratureRefinementDifference": 5.421010862427522e-20,
+      "matchedPressureMoment": 1.0,
+      "remainingGlobalMomentsMatched": false,
+      "stressConeCertified": false
+    },
+    {
+      "eta": -0.5,
+      "addedAnnularPressureMoment": 2.5597194810760606,
+      "basePressureMoment": 0.00028051892393953165,
+      "quadratureRefinementDifference": 6.776263578034403e-20,
+      "matchedPressureMoment": 2.56,
+      "remainingGlobalMomentsMatched": false,
+      "stressConeCertified": false
+    },
+    {
+      "eta": 0.0,
+      "addedAnnularPressureMoment": 3.9739027391351183,
+      "basePressureMoment": 0.026097260864881896,
+      "quadratureRefinementDifference": 5.793976409762536e-16,
+      "matchedPressureMoment": 4.0,
+      "remainingGlobalMomentsMatched": false,
+      "stressConeCertified": false
+    },
+    {
+      "eta": 0.5,
+      "addedAnnularPressureMoment": 2.5597195254980023,
+      "basePressureMoment": 0.0002804745019978415,
+      "quadratureRefinementDifference": 6.776263578034403e-20,
+      "matchedPressureMoment": 2.56,
+      "remainingGlobalMomentsMatched": false,
+      "stressConeCertified": false
+    },
+    {
+      "eta": 1.0,
+      "addedAnnularPressureMoment": 0.9997183525887352,
+      "basePressureMoment": 0.0002816474112648352,
+      "quadratureRefinementDifference": 5.421010862427522e-20,
+      "matchedPressureMoment": 1.0,
+      "remainingGlobalMomentsMatched": false,
+      "stressConeCertified": false
+    }
+  ],
+  "forceChecks": [
+    {
+      "position": [
+        0.05,
+        0.03,
+        0.02
+      ],
+      "time": 0.8,
+      "stepSizes": [
+        0.0002,
+        0.0001
+      ],
+      "accelerations": [
+        [
+          12.626611139280232,
+          10.89581158174219,
+          14.50107443283263
+        ],
+        [
+          12.627014148768898,
+          10.895118627756077,
+          14.50109057696021
+        ]
+      ],
+      "refinementDifference": 0.0008017870712861925,
+      "scope": "Force of this finite-time continuation, not the paper's smooth limiting forcing"
+    },
+    {
+      "position": [
+        1.2,
+        0.1,
+        0.0
+      ],
+      "time": 0.4,
+      "stepSizes": [
+        0.0002,
+        0.0001
+      ],
+      "accelerations": [
+        [
+          6.811807378467698e-10,
+          -9.041073794775734e-10,
+          0.0
+        ],
+        [
+          1.9692262794371307e-11,
+          6.542200227667677e-10,
+          0.0
+        ]
+      ],
+      "refinementDifference": 1.6929120754524566e-09,
+      "scope": "Force of this finite-time continuation, not the paper's smooth limiting forcing"
+    }
+  ],
+  "generationSeconds": 53.379113,
+  "radialTaylorOrder": 22,
+  "parameters": {
+    "h": 0.005,
+    "j0": 0.025,
+    "pressure_scale": 4.0,
+    "sigma": 0.5,
+    "lambda_": 16.0,
+    "axis_amplitude": 0.25
+  },
+  "interpolation": "Bicubic Hermite primitive J; velocity from its derivatives; bilinear swirl F"
+}

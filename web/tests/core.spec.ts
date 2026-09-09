@@ -1,14 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function loadCore(page: Page) {
-  await page.goto('/?debug=1');
+  await page.goto('/?field=core&debug=1');
   await page.waitForFunction(() => {
     const app = (window as any).__observatory;
     return app && !app.state.loading && app.renderer;
   });
 }
 
-test('default view renders the local contracting core with finite light and particles', async ({ page }, testInfo) => {
+test('isolated core view renders the local contracting core with finite light and particles', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await loadCore(page);
@@ -128,7 +128,7 @@ test('corrupted core data fails closed with playback unavailable', async ({ page
     chunk.sha256 = '0'.repeat(64);
     await route.fulfill({ response, json: manifest });
   });
-  await page.goto('/?debug=1');
+  await page.goto('/?field=core&debug=1');
   await expect(page.getByRole('alert')).toHaveText(/checksum.*(?:match|mismatch)/i);
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.locator('#toggle-play')).toBeDisabled();

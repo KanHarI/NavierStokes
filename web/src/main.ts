@@ -59,12 +59,12 @@ function showError(error: unknown) {
 
 async function start() {
   try {
-    const field = await loadField(state.isCore ? 'core' : 'exterior');
+    const field = await loadField(state.fieldKind);
     if (disposed) return;
     state.timeMin = field.manifest.time.start; state.timeMax = field.manifest.time.end;
     state.time = state.timeMin;
     state.modelLabel = field.manifest.label ?? 'Heat exterior · core not reconstructed';
-    state.modelDescription = state.isCore ? `${field.manifest.model.scope}. This finite local profile has inward flow and axial stretching. Global matching and the full correction construction are not reconstructed. Use Reset view after scrubbing to frame the smaller core. Empty regions are outside the computed patch.` : `${field.manifest.model.scope}. This diagnostic annulus is not a reconstructed blowup. The central core is outside the dataset; empty regions are not stationary fluid.`;
+    state.modelDescription = state.fieldKind === 'extended' ? `${field.manifest.model.scope}. Flow is defined around the core and becomes stationary beyond radius 8. Dust remains visible where velocity is zero. The full correction construction is not reconstructed.` : state.isCore ? `${field.manifest.model.scope}. This finite local profile has inward flow and axial stretching. Global matching and the full correction construction are not reconstructed. Use Reset view after scrubbing to frame the smaller core. Empty regions are outside the computed patch.` : `${field.manifest.model.scope}. This diagnostic annulus is not a reconstructed blowup. The central core is outside the dataset; empty regions are not stationary fluid.`;
     state.maxSpeed = state.isCore ? 100 : Math.hypot(...sampleVelocity(field, [field.manifest.domain.radialMin, 0, 0], state.timeMax)!);
     renderer = new Renderer(canvas, state, field); debug.renderer = renderer;
     state.flowAvailable = true; state.loading = false;
