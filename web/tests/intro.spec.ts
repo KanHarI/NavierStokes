@@ -24,166 +24,172 @@ async function replay(page: Page) {
   });
 }
 
-test('the default cinematic sequence actually plays four views and loops in real time', async ({ page }, info) => {
-  test.setTimeout(65_000);
+test('the arriving viewer plays a complete generated clip and starts a fresh one in real time', async ({ page }, info) => {
+  test.setTimeout(75_000);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await load(page);
   await expect.poll(() => page.evaluate(() => (window as any).__observatory.state.introActive)).toBe(true);
   await page.keyboard.press('Escape');
   await replay(page);
-  const start = await page.evaluate(() => {
+  await page.evaluate(() => {
     const audit = { start: performance.now(), observations: [] as any[] };
     (window as any).__introAudit = audit;
-    let previousShot = -1, lastSample = -Infinity;
+    let lastSample = -Infinity, previousShot = -1;
     const record = () => {
-      const s = (window as any).__observatory.state;
-      const elapsed = performance.now() - audit.start;
-      if (s.introShot !== previousShot || elapsed - lastSample >= 100) {
-        audit.observations.push({ elapsed, shot: s.introShot, active: s.introActive,
-          time: s.time, title: s.introTitle, scale: s.ship.scale, color: s.colorMode });
-        previousShot = s.introShot;
-        lastSample = elapsed;
+      const s = (window as any).__observatory.state, elapsed = performance.now()-audit.start;
+      // Each generated clip chooses its own density. Keep only test rendering
+      // quality reduced, including after its genuine per-clip reset.
+      s.density = 12;
+      if (s.introShot !== previousShot || elapsed-lastSample >= 100) {
+        audit.observations.push({ elapsed, shot: s.introShot, duration: s.introDuration,
+          active: s.introActive, phase: s.introProgress, time: s.time, color: s.colorMode });
+        lastSample = elapsed; previousShot = s.introShot;
       }
-      if (elapsed < 24_000) requestAnimationFrame(record);
+      if (elapsed < 45_000 && s.introActive) requestAnimationFrame(record);
     };
     requestAnimationFrame(record);
-    return audit.start;
   });
-  const captures = [];
-  for (const [shot, second] of [2, 8, 14, 20].entries()) {
-    await page.waitForFunction(({ start, second }) => performance.now() - start >= second * 1000,
-      { start, second });
-    const capture = await page.evaluate(() => {
+  const capture = async (name: string) => {
+    const result = await page.evaluate(() => {
       const app = (window as any).__observatory, s = app.state;
-      return { shot: s.introShot, time: s.time, minimum: s.timeMin, maximum: s.timeMax,
-        active: s.introActive, title: s.introTitle, position: s.ship.position,
-        orientation: s.ship.orientation, scale: s.ship.scale, color: s.colorMode,
-        audit: app.renderer.audit() };
+      return { shot: s.introShot, duration: s.introDuration, phase: s.introProgress,
+        time: s.time, minimum: s.timeMin, maximum: s.timeMax, active: s.introActive,
+        title: s.introTitle, position: s.ship.position, orientation: s.ship.orientation,
+        scale: s.ship.scale, color: s.colorMode, audit: app.renderer.audit() };
     });
-    expect(capture.shot).toBe(shot);
-    expect(capture.active).toBe(true);
-    expect(capture.title.length).toBeGreaterThan(0);
-    expect(capture.time).toBeGreaterThanOrEqual(capture.minimum);
-    expect(capture.time).toBeLessThanOrEqual(capture.maximum);
-    expect(capture.scale).toBeGreaterThan(0);
-    expect([...capture.position, ...capture.orientation, capture.scale].every(Number.isFinite)).toBe(true);
-    expect(Math.hypot(...capture.orientation)).toBeCloseTo(1, 5);
-    expect(capture.color).toBe('white');
-    expect(capture.audit.finiteParticles).toBe(true);
-    expect(capture.audit.glError).toBe(0);
-    expect(Number.isFinite(capture.audit.lightInput)).toBe(true);
-    expect(Number.isFinite(capture.audit.lightOutput)).toBe(true);
-    await page.screenshot({ path: info.outputPath(`intro-view-${shot + 1}.png`) });
-    captures.push({ shot: capture.shot, time: capture.time, scale: capture.scale,
-      title: capture.title, lightInput: capture.audit.lightInput });
-  }
-  await page.waitForFunction(start => {
+    expect(result.active).toBe(true);
+    expect(result.duration).toBeGreaterThanOrEqual(5);
+    expect(result.duration).toBeLessThanOrEqual(30);
+    expect(result.time).toBeGreaterThanOrEqual(result.minimum);
+    expect(result.time).toBeLessThanOrEqual(result.maximum);
+    expect(result.title.length).toBeGreaterThan(0);
+    expect(result.scale).toBeGreaterThan(0);
+    expect([...result.position, ...result.orientation, result.scale].every(Number.isFinite)).toBe(true);
+    expect(Math.hypot(...result.orientation)).toBeCloseTo(1, 5);
+    expect(result.color).toBe('white');
+    expect(result.audit.finiteParticles).toBe(true);
+    expect(result.audit.glError).toBe(0);
+    expect(Number.isFinite(result.audit.lightInput)).toBe(true);
+    expect(Number.isFinite(result.audit.lightOutput)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`${name}.png`) });
+    return result;
+  };
+  await page.waitForFunction(() => {
     const s = (window as any).__observatory.state;
-    return performance.now() - start >= 22_250 && s.introActive && s.introShot === 0;
-  }, start);
-  const report = await page.evaluate(() => {
-    const audit = (window as any).__introAudit;
-    const shots = audit.observations.map((p: any) => p.shot)
-      .filter((shot: number, index: number, values: number[]) => index === 0 || shot !== values[index - 1]);
-    return { elapsed: performance.now() - audit.start, shots, observations: audit.observations,
-      white: (window as any).__observatory.state.colorMode === 'white' };
-  });
-  expect(report.elapsed).toBeGreaterThanOrEqual(22_000);
-  expect(report.shots.slice(0, 5)).toEqual([0, 1, 2, 3, 0]);
-  expect(report.white).toBe(true);
-  await expect(page.locator('#intro-rate')).toHaveText('1/2× speed');
-  expect(await page.evaluate(() => (window as any).__observatory.state.introRate)).toBe(.5);
-  expect(captures.filter(capture => capture.lightInput > 0).length).toBeGreaterThanOrEqual(3);
-  expect(new Set(captures.map(capture => capture.title)).size).toBe(4);
-  for (let i = 1; i < captures.length; i++) expect(captures[i].scale).toBeLessThan(captures[i - 1].scale);
-  await info.attach('real-time-intro-audit', { body: JSON.stringify({ ...report, captures }, null, 2), contentType: 'application/json' });
+    return s.introShot === 0 && s.introProgress >= .3;
+  }, null, { timeout: 35_000 });
+  const first = await capture('intro-first-clip');
+  // Do not replace the browser clock: this waits for the genuine endpoint and
+  // its fade-to-black restart, however long this generated clip happens to be.
+  await page.waitForFunction(() => {
+    const s = (window as any).__observatory.state;
+    return s.introShot === 0 && s.time === s.timeMax;
+  }, null, { timeout: 35_000 });
+  const endpoint = await capture('intro-first-endpoint');
+  await page.waitForFunction(() => {
+    const s = (window as any).__observatory.state;
+    return s.introShot === 1 && s.introProgress >= .12;
+  }, null, { timeout: 35_000 });
+  const next = await capture('intro-next-clip');
+  expect(first.shot).toBe(0); expect(endpoint.shot).toBe(0); expect(next.shot).toBe(1);
+  expect(first.audit.lightInput).toBeGreaterThan(0);
+  expect(next.audit.lightInput).toBeGreaterThan(0);
+  const report = await page.evaluate(() => (window as any).__introAudit);
+  expect(report.observations.some((value: any) => value.shot === 0 && value.time === endpoint.maximum)).toBe(true);
+  const transition = report.observations.find((value: any) => value.shot === 1);
+  expect(transition.elapsed).toBeGreaterThanOrEqual((first.duration-.35)*1000);
+  expect(report.observations.every((value: any) => value.active && value.color === 'white')).toBe(true);
+  await info.attach('generated-intro-audit', { body: JSON.stringify({ ...report, captures: [first, endpoint, next] }, null, 2), contentType: 'application/json' });
   expect(errors).toEqual([]);
-  await page.keyboard.press('Escape');
-  await replay(page);
-  await expect(page.locator('#intro-rate')).toHaveText('1× speed');
-  expect(await page.evaluate(() => (window as any).__observatory.state.introRate)).toBe(1);
 });
 
-test('each complete four-view cycle halves every part of the choreography again', async ({ page }) => {
+async function moduleHost(page: Page) {
   await page.route('**/intro-module-host', route => route.fulfill({
-    contentType: 'text/html', body: '<!doctype html><title>Intro cycle speeds</title>',
+    contentType: 'text/html', body: '<!doctype html><title>Procedural intro contract</title>',
   }));
   await page.goto('/intro-module-host');
+}
+
+test('generated clips are seeded, diverse, and optically well formed', async ({ page }) => {
+  await moduleHost(page);
   const report = await page.evaluate(async () => {
-    const { sampleIntro } = await import('/src/intro.ts');
-    // First, second, third, fourth and fifth cycle starts (seconds).
-    return [0, 22, 66, 154, 330].map((start, cycle) => {
-      const duration = [22, 44, 88, 176, 352][cycle];
-      return { start: sampleIntro(start), beforeNext: sampleIntro(start+duration-1e-6),
-        next: sampleIntro(start+duration), pairs: [0, 1, 2, 3].map(shot => {
-          const point = shot*5.5+2;
-          const original = sampleIntro(point), slowed = sampleIntro(start+point*duration/22);
-          const later = sampleIntro(start+(point+.5)*duration/22);
-          return { original, slowed, later, originalLater: sampleIntro(point+.5) };
-        }) };
+    const { generateIntroClip, createIntroDirector } = await import('/src/intro.ts');
+    return [1, 7, 29, 1234, 65535, 0x12345678, 0xabcdef01, 0xffffffff].map(seed => {
+      const first = createIntroDirector(seed), second = createIntroDirector(seed);
+      let start = 0;
+      const clips = Array.from({ length: 16 }, (_, index) => {
+        const config = generateIntroClip(seed, index), repeated = generateIntroClip(seed, index);
+        const elapsed = start + .5*config.duration;
+        const sample = first.sample(elapsed), duplicate = second.sample(elapsed);
+        start += config.duration;
+        return { config, repeated, sample, duplicate };
+      });
+      return { seed, clips };
     });
   });
-  for (const [cycle, result] of report.entries()) {
-    expect(result.start.cycle).toBe(cycle);
-    expect(result.start.rate).toBe(2**-cycle);
-    expect(result.start.shot).toBe(0); expect(result.start.time).toBe(0);
-    expect(result.beforeNext.shot).toBe(3); expect(result.beforeNext.time).toBe(.9999);
-    expect(result.next.cycle).toBe(cycle+1); expect(result.next.shot).toBe(0);
-    expect(result.next.rate).toBe(2**(-cycle-1));
-    for (const { original, slowed, later, originalLater } of result.pairs) {
-      expect(slowed.shot).toBe(original.shot);
-      for (const property of ['phase', 'time', 'scale', 'fov', 'focus', 'exposure', 'opacity'] as const) {
-        expect(slowed[property]).toBeCloseTo(original[property], 12);
-      }
-      expect(slowed.position).toEqual(original.position);
-      expect(slowed.orientation).toEqual(original.orientation);
-      expect(later.time-slowed.time).toBeCloseTo(originalLater.time-original.time, 12);
-    }
+  const samples = report.flatMap(group => group.clips);
+  expect(new Set(samples.map(value => value.config.duration.toFixed(6))).size).toBeGreaterThan(80);
+  expect(new Set(samples.map(value => value.sample.fov.toFixed(5))).size).toBeGreaterThan(80);
+  expect(new Set(samples.map(value => value.sample.position.map((x: number) => x.toFixed(5)).join(','))).size).toBeGreaterThan(100);
+  for (const { config, repeated, sample, duplicate } of samples) {
+    expect(config).toEqual(repeated); expect(sample).toEqual(duplicate);
+    expect(config.duration).toBeGreaterThanOrEqual(5); expect(config.duration).toBeLessThanOrEqual(30);
+    expect(sample.shot).toBe(config.index);
+    expect(sample.duration).toBe(config.duration);
+    expect(sample.near).toBeGreaterThanOrEqual(0);
+    expect(sample.focus).toBeGreaterThan(sample.near);
+    expect(sample.focus).toBeLessThan(sample.far);
+    expect(sample.shellFade).toBeGreaterThan(0);
+    expect(sample.blur).toBeGreaterThanOrEqual(0); expect(sample.shellBokeh).toBeGreaterThanOrEqual(0);
+    expect(sample.fov).toBeGreaterThan(10); expect(sample.fov).toBeLessThan(120);
+    expect(sample.scale).toBeGreaterThan(0); expect(sample.perspective).toBeGreaterThan(0);
+    expect([...sample.position, ...sample.orientation, sample.scale, sample.exposure, sample.perspective].every(Number.isFinite)).toBe(true);
+    expect(Math.hypot(...sample.orientation)).toBeCloseTo(1, 10);
+    const [x, y, z, w] = sample.orientation;
+    const forward = [-2*(x*z+w*y), 2*(w*x-y*z), 2*(x*x+y*y)-1];
+    const distance = Math.hypot(...sample.position);
+    const alignment = forward.reduce((sum, value, i) => sum-value*sample.position[i]/distance, 0);
+    expect(alignment).toBeCloseTo(1, 10);
+    // The focused origin and shell share the same perspective-distance change.
+    expect(distance/sample.scale).toBeCloseTo(sample.focus, 9);
   }
 });
 
-test('each cinematic view uses a linear clock in an honest, progressively later time window', async ({ page }) => {
-  // A module-only host isolates the numerical choreography from rendering.
-  await page.route('**/intro-module-host', route => route.fulfill({
-    contentType: 'text/html', body: '<!doctype html><title>Intro choreography</title>',
-  }));
-  await page.goto('/intro-module-host');
+test('every generated clip advances physical time linearly and resets only at black', async ({ page }) => {
+  await moduleHost(page);
   const report = await page.evaluate(async () => {
-    const { sampleIntro } = await import('/src/intro.ts');
-    return {
-      shots: [0, 1, 2, 3].map(shot => ({
-        start: sampleIntro(shot * 5.5, 0, .9999),
-        first: sampleIntro(shot * 5.5 + 1.1, 0, .9999),
-        middle: sampleIntro(shot * 5.5 + 2.2, 0, .9999),
-        last: sampleIntro(shot * 5.5 + 3.3, 0, .9999),
-        endpoint: sampleIntro(shot * 5.5 + 5, 0, .9999),
-        fade: sampleIntro((shot + 1) * 5.5 - 1e-6, 0, .9999),
-      })),
-      loop: sampleIntro(22, 0, .9999),
-    };
+    const { generateIntroClip, createIntroDirector } = await import('/src/intro.ts');
+    return [19, 73, 2026].flatMap(seed => {
+      const director = createIntroDirector(seed);
+      let start = 0;
+      return Array.from({ length: 12 }, (_, index) => {
+        const config = generateIntroClip(seed, index), duration = config.duration, play = duration-1;
+        const at = (local: number) => director.sample(start+local, .2, .9999);
+        const result = { index, duration, begin: at(1e-9),
+          first: at(.35+.25*play), middle: at(.35+.5*play), last: at(.35+.75*play),
+          endpoint: at(duration-.5), beforeNext: at(duration-1e-6), next: at(duration+1e-9) };
+        start += duration;
+        return result;
+      });
+    });
   });
-  for (let shot = 0; shot < 4; shot++) {
-    const s = report.shots[shot];
-    expect(s.first.shot).toBe(shot);
-    expect(s.start.startTime).toBeCloseTo(1 - 10 ** -shot, 12);
-    expect(s.start.time).toBeCloseTo(s.start.startTime, 12);
-    expect(s.first.time).toBeGreaterThan(s.start.startTime);
-    expect(s.last.time - s.middle.time).toBeCloseTo(s.middle.time - s.first.time, 12);
-    expect(s.endpoint.time).toBe(.9999);
-    expect(s.start.opacity).toBeCloseTo(0, 5);
-    expect(s.fade.opacity).toBeLessThan(.0001);
-    expect(s.middle.opacity).toBe(1);
-    expect(s.last.scale).toBeLessThan(s.first.scale);
-    expect(s.last.scale/s.first.scale).toBeGreaterThan(.5);
-    expect(s.last.exposure).toBeGreaterThan(s.first.exposure);
-    expect(s.last.fov).toBeLessThan(s.first.fov);
-    expect(s.middle.fov).toBeGreaterThan(10);
-    expect(s.middle.fov).toBeLessThan(120);
-    expect(Math.hypot(...s.middle.orientation)).toBeCloseTo(1, 8);
+  for (const clip of report) {
+    const { begin, first, middle, last, endpoint, beforeNext, next } = clip;
+    expect(begin.shot).toBe(clip.index);
+    expect(begin.startTime).toBeGreaterThanOrEqual(.2);
+    expect(begin.startTime).toBeLessThan(.9999);
+    if (clip.index === 0) expect(begin.startTime).toBe(.2);
+    expect(begin.time).toBeCloseTo(begin.startTime, 10);
+    expect(first.time).toBeGreaterThan(begin.startTime);
+    expect(last.time-middle.time).toBeCloseTo(middle.time-first.time, 10);
+    expect((last.time-first.time)/(.5*(clip.duration-1))).toBeCloseTo(middle.playbackSpeed, 10);
+    expect(endpoint.time).toBe(.9999); expect(beforeNext.time).toBe(.9999);
+    expect(begin.opacity).toBeLessThan(1e-6); expect(beforeNext.opacity).toBeLessThan(1e-6);
+    expect(middle.opacity).toBe(1); expect(next.opacity).toBeLessThan(1e-6);
+    expect(next.shot).toBe(clip.index+1);
+    expect(next.time).toBeCloseTo(next.startTime, 10);
   }
-  expect(report.loop.shot).toBe(0);
-  expect(report.loop.time).toBeCloseTo(0, 12);
 });
 
 test('manual input preserves the current view, and exploration and replay remain available', async ({ page }) => {

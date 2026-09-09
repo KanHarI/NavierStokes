@@ -8,6 +8,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
   const root = document.createElement('div');
   root.className = 'cockpit';
   root.innerHTML = `
+    <div id="viewer-controls">
     <header class="mission-header">
       <div>
         <div class="eyebrow"><span class="signal"></span> Fluid observatory / 001</div>
@@ -47,17 +48,12 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     </aside>
     <div class="reticle" aria-hidden="true"></div>
     <div class="flight-prompt" id="flight-prompt"><button id="enter-flight">Click to fly <span aria-hidden="true">↗</span></button></div>
-    <section class="intro-card" id="intro-card" aria-label="Four views of a singularity, a repeating four-view sequence" hidden>
-      <div class="intro-kicker">Four views of a singularity <span aria-hidden="true">/</span> <span id="intro-shot-number">01</span><span id="intro-rate">1× speed</span></div>
+    <section class="intro-card" id="intro-card" aria-label="A singularity, many perspectives: a sequence of changing views" hidden>
+      <div class="intro-kicker">A singularity, many perspectives <span aria-hidden="true">/</span> <span id="intro-shot-number">01</span><span id="intro-duration">5.0 s clip</span></div>
       <h2 class="intro-title" id="intro-title">The gathering</h2>
       <p class="intro-description" id="intro-caption">A fluid accelerates. Space holds still.</p>
       <p class="intro-measures"><span>Linear time <span id="intro-time">0.0000</span></span><span>Core width <span id="intro-scale-ratio">1.00×</span></span><span>Axis speed <span id="intro-speed-ratio">1.0×</span></span></p>
-      <ol class="intro-progress" aria-label="Sequence views">
-        <li aria-label="View 1"><span></span></li>
-        <li aria-label="View 2"><span></span></li>
-        <li aria-label="View 3"><span></span></li>
-        <li aria-label="View 4"><span></span></li>
-      </ol>
+      <div class="intro-progress" role="progressbar" aria-label="Current clip progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
       <div class="intro-actions">
         <button id="explore-flow" class="explore-button">Explore the flow <span aria-hidden="true">↗</span></button>
         <span class="intro-hint">Take the controls</span>
@@ -75,7 +71,9 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
         <input id="simulation-time" type="range" min="0" max="1" step="0.0001" value="0" aria-label="Simulation time">
       </div>
       <div class="status-readout" id="viewer-status" role="status" aria-live="polite"></div>
-    </footer>`;
+    </footer>
+    </div>
+    <button class="quiet-button interface-toggle" id="toggle-interface" aria-expanded="true" aria-controls="viewer-controls">Hide controls</button>`;
   container.append(root);
   const bindings: Binding[] = [];
   const listeners: (() => void)[] = [];
@@ -204,8 +202,16 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
   const introCard = find('#intro-card');
   const introTitle = find('#intro-title');
   const introNumber = find('#intro-shot-number');
-  const introSegments = [...root.querySelectorAll<HTMLElement>('.intro-progress li')];
+  const introProgress = find('.intro-progress');
   const replayIntro = find<HTMLButtonElement>('#replay-intro');
+  const viewerControls = find('#viewer-controls');
+  const interfaceToggle = find<HTMLButtonElement>('#toggle-interface');
+  on(interfaceToggle, 'click', () => {
+    viewerControls.hidden = !viewerControls.hidden;
+    interfaceToggle.textContent = viewerControls.hidden ? 'Show controls' : 'Hide controls';
+    interfaceToggle.setAttribute('aria-expanded', String(!viewerControls.hidden));
+    root.classList.toggle('is-interface-hidden', viewerControls.hidden);
+  });
   on(controlsToggle, 'click', () => {
     const leavingIntro = root.classList.contains('is-intro');
     if (state.introActive) actions.stopIntro();
@@ -244,13 +250,10 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
         find('#intro-speed-ratio').textContent = `${state.introSpeedRatio.toFixed(1)}×`;
         find('#intro-time').textContent = state.time.toFixed(4);
         introNumber.textContent = String(state.introShot + 1).padStart(2, '0');
-        find('#intro-rate').textContent = state.introRate === 1 ? '1× speed' : `1/${Math.round(1/state.introRate)}× speed`;
-        introSegments.forEach((segment, index) => {
-          const progress = index < state.introShot ? 1 : index === state.introShot ? state.introProgress : 0;
-          segment.style.setProperty('--shot-progress', String(Math.max(0, Math.min(1, progress))));
-          if (index === state.introShot) segment.setAttribute('aria-current', 'step');
-          else segment.removeAttribute('aria-current');
-        });
+        find('#intro-duration').textContent = `${state.introDuration.toFixed(1)} s clip`;
+        const progress = Math.max(0, Math.min(1, state.introProgress));
+        introProgress.style.setProperty('--shot-progress', String(progress));
+        introProgress.setAttribute('aria-valuenow', String(Math.round(progress * 100)));
       }
       prompt.classList.toggle('is-flying', state.pointerLocked);
       find('#model-label').textContent = state.modelLabel;

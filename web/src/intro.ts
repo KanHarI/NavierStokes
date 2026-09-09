@@ -1,14 +1,45 @@
 import type { Quat, Vec3 } from './types';
 
-export const INTRO_SHOT_SECONDS = 5.5;
-export const INTRO_DURATION = 4 * INTRO_SHOT_SECONDS;
-const FADE_IN = .35, PLAY_END = 4.85, FADE_OUT = 5.15;
-const shots = [
-  { title: 'Drawn inward.', caption: 'The camera moves closer as the core contracts. Fluid is drawn inward and stretched along the axis.', elevation: 8, azimuth: -90, roll: -8, fov: 62 },
-  { title: 'Stretched upward.', caption: 'An oblique view of the last tenth of the interval. The ship moves independently of the fluid.', elevation: 38, azimuth: -35, roll: 12, fov: 58 },
-  { title: 'Faster. Narrower.', caption: 'Looking down the axis at the last hundredth. White motion traces reveal the accelerating swirl.', elevation: 74, azimuth: 30, roll: -18, fov: 66 },
-  { title: 'Closer to infinity.', caption: 'The last thousandth, magnified. Velocity keeps rising; this finite preview stops at t = 0.9999.', elevation: -28, azimuth: 140, roll: 20, fov: 60 },
-];
+export const INTRO_MIN_SECONDS = 5;
+export const INTRO_MAX_SECONDS = 30;
+const FADE_SECONDS = .35;
+
+/** Integer-seeded randomness keeps every generated shot reproducible for audits. */
+function randomSource(seed: number) {
+  let value = seed >>> 0;
+  return () => {
+    value = (value + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(value ^ value >>> 15, 1 | value);
+    t ^= t + Math.imul(t ^ t >>> 7, 61 | t);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/** Independent continuous choices, coupled later to keep the core in focus. */
+export function generateIntroClip(seed: number, index: number) {
+  const random = randomSource((seed ^ Math.imul(index + 1, 0x9E3779B1)) >>> 0);
+  const between = (a: number, b: number) => a + (b-a)*random();
+  return {
+    index, duration: between(INTRO_MIN_SECONDS, INTRO_MAX_SECONDS),
+    // Always introduce the complete interval first; subsequent windows explore
+    // any magnification up to the last thousandth, without a four-shot cycle.
+    decades: index === 0 ? 0 : between(0, 3),
+    azimuth: between(-180, 180), elevation: Math.asin(between(-.97, .97))*180/Math.PI,
+    orbit: between(18, 65)*(random() < .5 ? -1 : 1), lift: between(-8, 8),
+    roll: between(-30, 30), rollDrift: between(-10, 10),
+    framing: between(.34, .46), zoomPower: between(.17, .25),
+    fov: between(56, 72), fovDrift: between(-7, 4),
+    perspective: between(.9, 1.25), perspectiveDrift: between(-.08, .08),
+    focus: between(2.7, 3.3), focusDrift: between(-.18, .18),
+    frontDepth: between(.65, 1.15), backDepth: between(.8, 1.35),
+    depthDrift: between(-.12, .12), shellFade: between(.6, .95),
+    blur: between(11, 20), blurDrift: between(-4, 3),
+    shellBokeh: between(14, 25), bokehDrift: between(-4, 4),
+    exposure: between(2.2, 2.7), exposureDrift: between(.1, .4),
+    density: between(55, 75),
+  };
+}
+
 const radians = (degrees: number) => degrees * Math.PI / 180;
 const smooth = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t*t*t*(10+t*(-15+6*t)); };
 const cross = (a: Vec3, b: Vec3): Vec3 => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
@@ -28,38 +59,55 @@ function orientation(position: Vec3, roll: number): Quat {
 }
 function unitQuaternion(q: Quat): Quat { const n=Math.hypot(...q); return q.map(x=>x/n) as Quat; }
 
-/** Four linear-time replays at progressively finer, explicitly labelled scales.
- * A gentle camera zoom retains the core in view; flux-aware hidden sampling
- * accounts for the moving observation volume.
- * Camera motion never changes the scientific velocity field or tracer speed.
- */
-export function sampleIntro(elapsed: number, timeMin = 0, timeMax = .9999) {
-  if (!Number.isFinite(elapsed)) throw new Error('Intro elapsed time must be finite.');
-  // Whole four-view cycles take 22, 44, 88, ... seconds. Subtraction keeps
-  // exact cycle boundaries stable without rounding logarithms near powers of 2.
-  let remaining = Math.max(0, elapsed), cycle = 0, stretch = 1;
-  while (remaining >= INTRO_DURATION*stretch) {
-    remaining -= INTRO_DURATION*stretch; stretch *= 2; cycle++;
-  }
-  const rate = 1/stretch, within = remaining*rate;
-  const shot = Math.min(3, Math.floor(within/INTRO_SHOT_SECONDS));
-  const local = within-shot*INTRO_SHOT_SECONDS, phase = local/INTRO_SHOT_SECONDS, config = shots[shot];
-  const startTime = Math.min(timeMax, 1-(1-timeMin)*10**(-shot));
-  const play = Math.max(0, Math.min(1, (local-FADE_IN)/(PLAY_END-FADE_IN)));
+/** Sample one generated approach. Physical time is linear during its active
+ * interval; the camera never changes the scientific velocity field. */
+export function sampleIntroClip(config: ReturnType<typeof generateIntroClip>, local: number,
+  timeMin = 0, timeMax = .9999) {
+  const duration = config.duration;
+  const phase = Math.max(0, Math.min(1, local/duration)), ease = smooth(phase);
+  const startTime = Math.max(timeMin, Math.min(timeMax, 1-(1-timeMin)*10**(-config.decades)));
+  const playSeconds = duration-1;
+  const play = Math.max(0, Math.min(1, (local-FADE_SECONDS)/playSeconds));
   const time = startTime+(timeMax-startTime)*play;
   const remainingFraction = (1-time)/(1-startTime);
-  // A smooth floor eases the camera to rest while the physical core keeps
-  // contracting. The framing never cancels the full similarity contraction.
-  const zoom = (Math.hypot(remainingFraction,.05)/Math.hypot(1,.05))**.22;
-  const scale = .4*Math.sqrt(1-startTime)*zoom, distance = 3*scale;
-  const azimuth = radians(config.azimuth+24*(smooth(phase)-.5));
-  const elevation = radians(config.elevation+5*Math.sin(phase*Math.PI));
+  // The camera eases to rest while the core continues its physical contraction.
+  const zoom = (Math.hypot(remainingFraction,.05)/Math.hypot(1,.05))**config.zoomPower;
+  const scale = config.framing*Math.sqrt(1-startTime)*zoom;
+  // Dolly and viewing radii move together; compensating FOV changes perspective
+  // while approximately retaining the core's apparent size.
+  const perspective = config.perspective+config.perspectiveDrift*ease;
+  const focus = (config.focus+config.focusDrift*ease)*perspective;
+  const distance = focus*scale;
+  const depth = 1+config.depthDrift*ease;
+  const azimuth = radians(config.azimuth+config.orbit*(ease-.5));
+  const elevation = radians(Math.max(-85, Math.min(85, config.elevation+config.lift*Math.sin(phase*Math.PI))));
   const position: Vec3 = [distance*Math.cos(elevation)*Math.cos(azimuth), distance*Math.cos(elevation)*Math.sin(azimuth), distance*Math.sin(elevation)];
-  return { cycle, rate, shot, phase, time, startTime, title: config.title, caption: config.caption,
-    opacity: smooth(local/FADE_IN)*(1-smooth((local-FADE_OUT)/(INTRO_SHOT_SECONDS-FADE_OUT))),
-    position, orientation: orientation(position,radians(config.roll+3*Math.sin(phase*Math.PI))),
-    scale, fov: config.fov-4*smooth(phase),
-    exposure: 2.5+[0,.15,-.2,.1][shot]+.3*smooth(phase),
-    near: shot===2?2:1.7, far: shot===2?4:4.3, focus: 2.8+.25*smooth(phase),
-    shellFade: .8, blur: 18-5*smooth(phase), shellBokeh: 18-4*smooth(phase) };
+  const axial = Math.abs(config.elevation) > 55;
+  const title = axial ? 'Inside the accelerating swirl.' : 'A core drawn ever narrower.';
+  const caption = `${axial ? 'Looking along the axis reveals rotation.' : 'An orbit reveals inward flow and axial stretching.'} Linear time from t = ${startTime.toFixed(4)} to ${timeMax.toFixed(4)}; the preview stops before the singularity.`;
+  return { shot: config.index, duration, phase, time, startTime, title, caption,
+    playbackSpeed: (timeMax-startTime)/playSeconds,
+    opacity: smooth(local/FADE_SECONDS)*(1-smooth((local-(duration-FADE_SECONDS))/FADE_SECONDS)),
+    position, orientation: orientation(position,radians(config.roll+config.rollDrift*ease)), scale,
+    perspective, fov: 2*Math.atan(Math.tan(radians(config.fov+config.fovDrift*ease)/2)/perspective)*180/Math.PI,
+    exposure: config.exposure+config.exposureDrift*ease,
+    near: focus-config.frontDepth*perspective*depth,
+    far: focus+config.backDepth*perspective*depth, focus,
+    shellFade: config.shellFade*perspective, blur: config.blur+config.blurDrift*ease,
+    shellBokeh: config.shellBokeh+config.bokehDrift*ease, density: config.density };
+}
+
+/** Constant memory and constant work on ordinary frames. Rewinding reproduces
+ * the same seed; a new director creates a new procedural sequence. */
+export function createIntroDirector(seed: number) {
+  let index = 0, start = 0, config = generateIntroClip(seed, 0);
+  return { sample(elapsed: number, timeMin = 0, timeMax = .9999) {
+    if (!Number.isFinite(elapsed)) throw new Error('Intro elapsed time must be finite.');
+    elapsed = Math.max(0, elapsed);
+    if (elapsed < start) { index = 0; start = 0; config = generateIntroClip(seed, 0); }
+    while (elapsed >= start+config.duration) {
+      start += config.duration; config = generateIntroClip(seed, ++index);
+    }
+    return sampleIntroClip(config, elapsed-start, timeMin, timeMax);
+  } };
 }

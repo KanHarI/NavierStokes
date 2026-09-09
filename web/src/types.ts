@@ -7,7 +7,7 @@ export interface AppState {
   introActive: boolean;
   introShot: number;
   introProgress: number;
-  introRate: number;
+  introDuration: number;
   introTitle: string;
   introCaption: string;
   introSpeedRatio: number;
@@ -63,7 +63,7 @@ export function initialState(): AppState {
   const isCore = fieldKind !== 'exterior';
   return {
     isCore, fieldKind,
-    introActive: false, introShot: 0, introProgress: 0, introRate: 1, introTitle: '', introCaption: '',
+    introActive: false, introShot: 0, introProgress: 0, introDuration: 0, introTitle: '', introCaption: '',
     introSpeedRatio: 1, introScaleRatio: 1,
     ship: { position: isCore ? [0, -.6, .15] : [0, -2.4, 0.6], orientation: [0.627,-0.0,0.0,0.779], scale: isCore ? .25 : 1 },
     movementSpeed: 0.5, pointerLocked: false,

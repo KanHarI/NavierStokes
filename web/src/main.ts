@@ -5,7 +5,7 @@ import { createNavigation } from './navigation';
 import { loadField, sampleVelocity } from './field';
 import { advanceTime } from './time';
 import { Renderer } from './renderer';
-import { sampleIntro } from './intro';
+import { createIntroDirector } from './intro';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#space')!;
 const container = document.querySelector<HTMLElement>('#interface')!;
@@ -17,6 +17,7 @@ let disposed = false;
 let lastFrame = performance.now();
 let lastUI = 0;
 let reseedAt = -1;
+let introDirector = createIntroDirector(0);
 let introElapsed = 0;
 let introSegment = -1;
 let introPriming = false;
@@ -41,8 +42,10 @@ function startIntro() {
   state.timeMode = 'linear'; state.density = 70; state.exposure = 2.5;
   state.densityCompensation = false;
   introElapsed = 0; introSegment = -1; introPriming = true; reseedAt = -1;
-  state.introShot = 0; state.introProgress = 0; state.introRate = 1;
-  state.introTitle = sampleIntro(0).title; state.introCaption = sampleIntro(0).caption;
+  introDirector = createIntroDirector(crypto.getRandomValues(new Uint32Array(1))[0]);
+  const first = introDirector.sample(0, state.timeMin, state.timeMax);
+  state.introShot = 0; state.introProgress = 0; state.introDuration = first.duration;
+  state.introTitle = first.title; state.introCaption = first.caption;
   canvas.style.transition = 'none'; canvas.style.opacity = '0';
   lastFrame = performance.now(); ui.update();
   document.querySelector<HTMLButtonElement>('#explore-flow')?.focus({ preventScroll: true });
@@ -120,13 +123,13 @@ function frame(now: number) {
   let timeDelta: number, transportDelta: number;
   if (state.introActive) {
     introElapsed += clockElapsed;
-    const shot = sampleIntro(introElapsed, state.timeMin, state.timeMax);
-    const segment = shot.cycle*4+shot.shot, restart = segment !== introSegment;
+    const shot = introDirector.sample(introElapsed, state.timeMin, state.timeMax);
+    const segment = shot.shot, restart = segment !== introSegment;
     timeDelta = restart ? 0 : Math.max(0, shot.time-state.time); transportDelta = timeDelta;
-    if (restart) { renderer.reseed(); introSegment = segment; }
+    if (restart) { renderer.reseed(); introSegment = segment; state.density = shot.density; }
     state.time = shot.time; state.playing = shot.time < state.timeMax;
     state.introShot = shot.shot; state.introProgress = shot.phase;
-    state.introRate = shot.rate;
+    state.introDuration = shot.duration;
     state.introTitle = shot.title; state.introCaption = shot.caption;
     state.introScaleRatio = Math.sqrt((1-shot.time)/(1-state.timeMin));
     state.introSpeedRatio = ((1-state.timeMin)/(1-shot.time))**(.5+renderer.field.manifest.model.h);
@@ -134,7 +137,7 @@ function frame(now: number) {
     state.near = shot.near; state.far = shot.far; state.focus = shot.focus; state.shellFade = shot.shellFade;
     state.blur = shot.blur; state.shellBokeh = shot.shellBokeh; state.fov = shot.fov;
     state.exposure = shot.exposure;
-    state.playbackSpeed = (state.timeMax-shot.startTime)/4.5 * shot.rate;
+    state.playbackSpeed = shot.playbackSpeed;
     canvas.style.opacity = String(shot.opacity);
   } else {
     navigation.update(dt);

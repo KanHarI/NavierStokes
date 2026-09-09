@@ -1,37 +1,37 @@
-# Four views of the concentrating core
+# Procedural approaches to the concentrating core
 
-The arrival sequence is rendered live in WebGL, using the same precomputed
-field and particle integrator as exploration. Its first cycle lasts **22
-seconds**: four 5.5-second approaches, with fresh dust after each. Every
-complete repeat halves playback speed again: 1×, ½×, ¼×, ⅛×, …, giving
-cycle durations of 22, 44, 88, 176 seconds, etc. There is no fixed speed floor.
-Camera paths, optical transitions, and physical time all share this clock.
-The complete sequence uses **white light**. Temporary speed coloring and
-distance desaturation were used only during visual composition.
+The arrival sequence is rendered live in WebGL using the same precomputed
+field and particle integrator as exploration. It generates an endless series
+of independent **5–30-second clips**, all in **white light**. A fresh random
+seed is chosen on arrival and on Replay. The integer-seeded generator is
+reproducible for testing; there is no fixed set of movies or four-view cycle.
+The previous progressively slower repeats have been replaced by bounded
+random durations.
 
-| View | Starting time | Starting observation scale | Elevation |
-| --- | --- | --- | --- |
-| Drawn inward | 0 | 0.4 | 8° |
-| Stretched upward | 0.9 | 0.1265 | 38° |
-| Faster. Narrower. | 0.99 | 0.04 | 74° |
-| Closer to infinity | 0.999 | 0.01265 | −28° |
-
-On the first cycle, every view advances **linearly** to t=0.9999 over 4.5 seconds, after a
-0.35-second fade-in. The endpoint is held briefly, then the image fades to
-black for the next restart. Later views explicitly identify the shorter
-physical interval. They are magnified replays, not four identical-duration
-physical experiments. The renderer completes its initial GPU work before
-starting the first shot's clock, so compilation does not skip the opening.
+The first clip starts at the dataset's initial time. Later clips draw a
+continuous magnification between the full interval and its last thousandth.
+Their captions identify the actual starting and ending times. Each has a
+0.35-second fade-in, linear physical-time progression for duration minus
+one second, a 0.30-second endpoint hold, and a 0.35-second fade-out. Every
+clip reaches t=0.9999 before restarting. The renderer completes its initial
+GPU work before starting the clock. Background-tab time does not advance.
 
 ## Camera, depth, and light
 
-Each camera orbits through 24° and gently changes elevation and roll. It
-moves closer and reduces observation scale as the core contracts, with a
-smooth floor that slows the camera near the endpoint. Physical contraction
-continues faster than the camera zoom, keeping narrowing visible. Field of
-view, focus, bokeh, and exposure follow small predetermined changes. These
-are camera settings; the fluid velocity and the simulation clock retain
-their scientific definitions.
+Each clip independently chooses azimuth, elevation, orbit direction and
+extent, roll, magnification, zoom rate, perspective, field of view, focus,
+front/back shell depth, fade width, Gaussian bokeh, ISO, and dust density.
+Elevation is sampled uniformly in its sine within a pole-safe range, so
+views cover both hemispheres without a preferred viewing axis. Smooth
+interpolation keeps camera and optical changes continuous within a clip.
+
+These choices are coupled: the core stays at the spherical focus distance;
+perspective changes move the observer and shell distances together while
+compensating field of view. Near and far shell radii remain on opposite
+sides of focus. The camera zoom has a smooth floor, so physical contraction
+continues faster than camera motion near the endpoint. Optical settings
+stay within the manual controls' ranges. Particle density is chosen only
+at the black restart; it is not continually changed during visible flow.
 
 Depth comes from parallax, focused luminous points, foreground/background
 bokeh, and motion aligned with the actual projected fluid velocity. The
@@ -41,12 +41,16 @@ integrated particle light. The straight-motion approximation is bounded to
 2% of remaining physical time, with a 36-pixel travel cap. It neither emits
 extra light when velocity rises nor draws artificial radial bursts.
 
-The opening uses deliberately chosen ISO values; exposure does not adjust
-automatically during manual exploration. **Explore the flow**, **Controls**,
-Escape, or an input edit ends the choreography and preserves the current
-camera and optics. The field pauses on handoff. **Replay sequence** starts
-again at the original 1× speed. Users requesting reduced motion, `?intro=0`, and explicit isolated
-field URLs start in manual mode.
+Exposure is choreographed only during the introduction. **Explore the
+flow**, **Controls**, Escape, or an input edit ends choreography, preserves
+the camera and optics, and pauses the field. **Replay sequence** starts a
+fresh procedural sequence. Reduced-motion users, `?intro=0`, and explicit
+isolated field URLs start in manual mode.
+
+**Hide controls** removes all cockpit overlays, leaving a persistent
+**Show controls** button. Hiding/restoring neither stops the camera nor
+restarts the clock. Hidden controls are removed from keyboard navigation;
+the restore affordance remains usable on narrow screens.
 
 ## What the measurements mean
 
@@ -80,24 +84,19 @@ dust already in view keeps its position.
 
 ## Checks
 
-- A real-time Playwright run observes all four shots and the restart after
-  22 seconds, with finite particle state and white rendering.
-- Clock checks cover the four physical intervals and changing camera/optics,
-  the boundaries of five progressively slower cycles, and identical
-  compositions at corresponding moments. The real-time run checks the
-  transition to ½ speed and Replay resetting to 1×.
-- Interaction checks cover keyboard handoff, controls, replay, and reduced
-  motion; editing an input preserves the user's new value.
-- GPU integration of both circular and directional Gaussian footprints
-  preserves particle light within 2% in the tested finite pixel fixture.
-- Analytic inflow tests cover constant-flow sphere flux, incompressible
-  strain, a moving observer, stationary fluid, and translation invariance.
-- Existing surrounding-field, stationary-dust, recycling, and perspective
-  calibration checks remain part of the regression suite.
+- Seeded sampler checks cover many generated clips: reproducibility,
+  varied angles/durations/optics, finite normalized camera poses, shell
+  ordering, focus framing, linear time, and black restart boundaries.
+- A real-time browser check observes a complete generated approach and
+  its successor with white rendering, finite particles, and no WebGL errors.
+- Interaction checks cover keyboard handoff, controls, replay, reduced
+  motion, and hiding/restoring the interface without stopping playback.
+- GPU integration of circular and directional Gaussian footprints checks
+  integrated particle light within 2% in the finite pixel fixture.
+- Existing numerical-field, stationary-dust, inflow, recycling, and
+  perspective checks cover the underlying simulation and rendering.
 
-Validation: production build, 52 scientific tests, and 17 relevant browser
-checks passed. The production smoke run observed all four views and the
-restart, verified white light and finite GPU state, then handed control to
-the explorer and switched scientific fields under a repository URL prefix.
+The image below is an earlier representative white-light composition;
+procedural arrivals now generate different camera paths.
 
-![White light, directional exposure, and depth in the axial view](../intro-preview.png)
+![White light and directional exposure near the core](../intro-preview.png)

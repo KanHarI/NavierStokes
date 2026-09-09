@@ -135,9 +135,8 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
 .intro-description { margin: 0; max-width: 390px; color: #aeb0ad; font-size: 12px; line-height: 1.6; letter-spacing: .15px; }
 .intro-measures { display: flex; flex-wrap: wrap; gap: 4px 15px; margin: 12px 0 0; color: #777d77; font-size: 10px; line-height: 1.6; }
 .intro-measures span span { margin-left: 5px; color: #c3c8bf; font-variant-numeric: tabular-nums; }
-.intro-progress { display: flex; gap: 7px; width: 192px; margin: 26px 0 24px; padding: 0; list-style: none; }
-.intro-progress li { position: relative; flex: 1; height: 2px; overflow: hidden; background: rgba(255, 255, 255, .18); }
-.intro-progress li span {
+.intro-progress { width: 192px; height: 2px; overflow: hidden; margin: 26px 0 24px; background: rgba(255, 255, 255, .18); }
+.intro-progress > span {
   display: block; height: 100%; background: #deded9; transform-origin: left;
   transform: scaleX(var(--shot-progress, 0));
 }
@@ -165,6 +164,10 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
 .is-intro .quiet-button { background: rgba(0, 0, 0, .3); color: #bbc1b9; }
 .is-intro .quiet-button:hover { background: rgba(255, 255, 255, .08); border-color: #747b71; }
 .is-intro button:focus-visible { outline-color: #eceee9; }
+.interface-toggle { position: absolute; right: 30px; bottom: 95px; min-height: 36px; }
+.is-intro .interface-toggle { right: 50px; bottom: 48px; }
+.is-interface-hidden .interface-toggle { opacity: .65; }
+.is-interface-hidden .interface-toggle:hover, .is-interface-hidden .interface-toggle:focus-visible { opacity: 1; }
 @media (max-width: 760px) {
   .mission-header { top: 20px; left: 20px; right: 20px; gap: 12px; }
   .wordmark { font-size: 15px; }
@@ -180,6 +183,8 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
   .is-intro .mission-header { top: 24px; left: 25px; right: 25px; }
   .intro-card { left: 25px; bottom: 32px; width: calc(100% - 50px); }
   .intro-title { max-width: 360px; }
+  .interface-toggle { right: 20px; }
+  .is-intro .interface-toggle { right: 25px; bottom: 32px; }
 }
 @media (max-width: 480px) {
   .header-actions { flex-direction: column; align-items: flex-end; }
@@ -192,6 +197,7 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
   .intro-title { margin-top: 14px; }
   .is-intro .scope-badge { max-width: 215px; font-size: 8px; }
   .is-intro .wordmark { font-size: 14px; }
+  .is-intro .interface-toggle { bottom: auto; top: 70px; }
 }
 @media (max-height: 480px) {
   .intro-card { bottom: 22px; }
