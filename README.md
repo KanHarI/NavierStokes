@@ -108,6 +108,8 @@ The FOV control is **horizontal**, initially 65°. The renderer accounts for the
 
 Particle light is accumulated in a linear HDR image. Manual ISO/exposure multiplies that light. When pixels exceed display capacity, their excess luminance is redistributed to nearby pixels as white light. This redistribution must conserve represented light within measured numerical tolerances; it is not an additive bloom effect.
 
+The renderer extracts excess light once, smooths it through five linear scales, then combines it with the retained point image. This avoids dotted grid halos caused by clipping between sparse spreading passes. Ordinary points keep their original Gaussian footprint; only excess light forms a broader, continuous halo.
+
 An image brighter than the capacity of the entire display cannot be preserved through spreading alone. Manual exposure remains under user control, and unresolved overexposure must be reported. Physical radiance conservation and subjective perceived brightness are different quantities.
 
 Increasing particle density initially increases total light because per-particle brightness remains constant. An optional density-compensation setting can approximately preserve overall brightness when density changes.

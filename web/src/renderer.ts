@@ -235,12 +235,13 @@ void main(){vec2 normalized=vOffset/vSigma;float r2=dot(normalized,normalized);i
   float I=vLight*exp(-.5*r2)/(6.28318530718*vSigma.x*vSigma.y*(1.-exp(-4.5)));
   color=vec4(vColor*I,0.);
 }`;
-// Gather weights are normalized at their source, so truncated boundary kernels
-// distribute all source light. The two separable passes conserve linear luminance.
+// Extract overflow once, then run a linear multiscale convolution. Thresholding
+// between scales would freeze sparse samples into visible dotted-grid halos.
+// Source-normalized boundary weights preserve all represented light.
 const spreadFragment = `#version 300 es
 precision highp float;
-uniform sampler2D uInput,uHorizontal;
-uniform int uStride,uPass;
+uniform sampler2D uInput,uHorizontal,uOriginal;
+uniform int uStride,uPass,uExtract,uComposite;
 out vec4 color;
 float w(int i){return i==0?6.:abs(i)==1?4.:1.;}
 float normalizer(int source,int size){float n=0.;for(int k=-2;k<=2;k++){int j=source+k*uStride;if(j>=0&&j<size)n+=w(k);}return n;}
@@ -251,10 +252,10 @@ void main(){
   for(int k=-2;k<=2;k++){
     ivec2 source=p+(uPass==0?ivec2(k*uStride,0):ivec2(0,k*uStride));
     if(any(lessThan(source,ivec2(0)))||any(greaterThanEqual(source,size)))continue;
-    float value=uPass==0?excess(texelFetch(uInput,source,0).rgb):texelFetch(uHorizontal,source,0).r;
+    float value=uPass==0?(uExtract==1?excess(texelFetch(uInput,source,0).rgb):texelFetch(uInput,source,0).r):texelFetch(uHorizontal,source,0).r;
     light+=value*w(k)/normalizer(uPass==0?source.x:source.y,uPass==0?size.x:size.y);
   }
-  color=uPass==0?vec4(light,0,0,0):vec4(keep(texelFetch(uInput,p,0).rgb)+vec3(light),0.);
+  color=uComposite==1?vec4(keep(texelFetch(uOriginal,p,0).rgb)+vec3(light),0.):vec4(light,0,0,0);
 }`;
 const displayFragment = `#version 300 es
 precision highp float;uniform sampler2D uInput;out vec4 color;
@@ -493,6 +494,7 @@ export class Renderer {
   private redistribute(input: Target): Target {
     const gl = this.gl; const p = this.spreadProgram; gl.useProgram(p.program);
     gl.viewport(0, 0, input.width, input.height);
+    this.texture(p, 'uOriginal', input.texture, 2);
     let current = input;
     for (const stride of [1, 2, 4, 8, 16]) {
       const output = current === this.targets[2] ? this.targets[3] : this.targets[2];
@@ -500,9 +502,11 @@ export class Renderer {
       this.texture(p, 'uInput', current.texture, 0);
       // Both samplers must avoid the render attachment, even when a branch does not sample one.
       this.texture(p, 'uHorizontal', current.texture, 1);
+      this.i(p, 'uExtract', stride === 1 ? 1 : 0); this.i(p, 'uComposite', 0);
       this.i(p, 'uStride', stride); this.i(p, 'uPass', 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.bindFramebuffer(gl.FRAMEBUFFER, output.framebuffer);
-      this.texture(p, 'uHorizontal', this.targets[1].texture, 1); this.i(p, 'uPass', 1); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      this.texture(p, 'uHorizontal', this.targets[1].texture, 1); this.i(p, 'uPass', 1);
+      this.i(p, 'uComposite', stride === 16 ? 1 : 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
       current = output;
     }
     return current;
@@ -599,17 +603,22 @@ export class Renderer {
   }
 
   /** Small synthetic GPU scenes exercise the actual redistribution shaders. */
-  auditLight() {
+  auditLight(halo = false) {
     const gl = this.gl;
     const savedTargets = this.targets; const savedReductions = this.reductions;
-    const size = 64;
+    const size = halo ? 256 : 64;
     this.targets = Array.from({ length: 4 }, () => this.target(size, size));
-    this.reductions = [32, 16, 8, 4, 2, 1].map(n => this.target(n, n, true));
-    const cases: { name: string; input: number; output: number; overflow: number; relativeError: number }[] = [];
+    this.reductions = (halo ? [128, 64, 32, 16, 8, 4, 2, 1] : [32, 16, 8, 4, 2, 1]).map(n => this.target(n, n, true));
+    const cases: { name: string; input: number; output: number; overflow: number; relativeError: number; row?: number[]; pixels?: number[] }[] = [];
     try {
-      for (const name of ['center', 'edge', 'color', 'full-screen']) {
+      for (const name of (halo ? ['bright-gaussian', 'dim-gaussian'] : ['center', 'edge', 'color', 'full-screen'])) {
         const data = new Float32Array(size * size * 4);
-        if (name === 'full-screen') {
+        if (halo) {
+          for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+            const value = (name === 'bright-gaussian' ? 20 : .5) * Math.exp(-((x-size/2)**2+(y-size/2)**2)/4.5);
+            data.set([value, value, value, 0], (y*size+x)*4);
+          }
+        } else if (name === 'full-screen') {
           for (let i = 0; i < size * size; i++) data.set([2, 2, 2, 0], i * 4);
         } else {
           const pixel = name === 'edge' ? 0 : (size / 2) * size + size / 2;
@@ -619,10 +628,19 @@ export class Renderer {
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, size, size, gl.RGBA, gl.FLOAT, data);
         gl.disable(gl.BLEND); gl.bindVertexArray(this.emptyVAO);
         const input = this.measure(this.targets[0]);
-        const output = this.measure(this.redistribute(this.targets[0]));
-        cases.push({ name, input: input[0], output: output[0], overflow: output[1], relativeError: Math.abs(output[0] - input[0]) / input[0] });
+        const image = this.redistribute(this.targets[0]);
+        let row: number[] | undefined, pixels: number[] | undefined;
+        if (halo) {
+          const values = new Float32Array(size * size * 4);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, image.framebuffer);
+          gl.readPixels(0, 0, size, size, gl.RGBA, gl.FLOAT, values);
+          row = Array.from({ length: 65 }, (_, x) => values[((size/2)*size+size/2+x)*4]);
+          pixels = Array.from({ length: size*size }, (_, index) => values[index*4]);
+        }
+        const output = this.measure(image);
+        cases.push({ name, input: input[0], output: output[0], overflow: output[1], relativeError: Math.abs(output[0] - input[0]) / input[0], row, pixels });
       }
-      return { cases, glError: gl.getError() };
+      return { cases, size, glError: gl.getError() };
     } finally {
       [...this.targets, ...this.reductions].forEach(t => this.destroyTarget(t));
       this.targets = savedTargets; this.reductions = savedReductions;

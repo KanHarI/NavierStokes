@@ -23,6 +23,11 @@ Software-rendered test frame rates are not a hardware performance benchmark. Saf
 - Translation follows ship orientation and normalizes simultaneous input. Repeated local rotations preserve a unit quaternion.
 - Editing interface fields does not trigger flight shortcuts; focus loss and pointer release clear held keys; disposing navigation removes its handlers.
 - The actual GPU redistribution shaders conserve linear luminance within 1% on centered, edge, colored, and uniformly overloaded synthetic images.
+- Excess light is extracted once and convolved through all five scales before
+  recombination. A GPU bright-Gaussian fixture checks a continuous, monotonically
+  decreasing halo profile, while a dim-Gaussian fixture checks that the original
+  point footprint remains unchanged. This catches the dotted-grid defect that
+  energy-conservation checks alone could not detect. The pass count remains ten.
 - The actual Gaussian particle shader preserves integrated light within 1% for three distances at the tested minimum spot size. With a target of 12 light units, measured near/focus/far totals were 11.9127, 12.0693, and 11.9944. A 1.1-pixel minimum Gaussian width limits the pixel-sampling error observed with smaller points.
 - Uniform full-screen overexposure retains an explicit residual. The test verifies that display capacity is not falsely reported as sufficient.
 - A deterministic uniform shell remains approximately uniform in raw image brightness across camera rotations and fields of view. The [projection calibration](projection.md) documents the original bias, measure conversion, and actual GPU measurements.
