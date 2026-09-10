@@ -29,15 +29,17 @@ test('Gyro permission pauses rendering and the viewer clock without a catch-up i
     const before = snapshot();
     const original = app.renderer.render.bind(app.renderer);
     let renders = 0;
-    app.renderer.render = (...args: any[]) => { renders++; original(...args); };
+    app.renderer.render = (...args: any[]) => { renders++; return original(...args); };
     await new Promise(resolve => setTimeout(resolve, 400));
     const after = snapshot(), rendersWhilePending = renders;
     (window as any).__permissionResume = null;
     app.renderer.render = (...args: any[]) => {
-      if (!(window as any).__permissionResume) (window as any).__permissionResume = {
+      // A suspended GPU batch resumes its original immutable interval. Measure
+      // the next newly advanced clock interval, rather than that continuation.
+      if (!app.renderer.hasPendingFrame && !(window as any).__permissionResume) (window as any).__permissionResume = {
         wall: args[0], timeDelta: args[2], speed: s.playbackSpeed, at: performance.now(),
       };
-      original(...args);
+      return original(...args);
     };
     const resolvedAt = performance.now();
     (window as any).__resolveGyro('granted');
@@ -130,5 +132,58 @@ test('lost graphics rebuild from cached data, preserve manual settings, and boun
   await lose();
   await expect(page.getByRole('alert')).toContainText('Graphics could not recover reliably');
   expect(await page.evaluate(() => (window as any).__observatory.state.flowAvailable)).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test('a missing graphics restoration leaves the loader after eight seconds and a late restoration still works', async ({ page }) => {
+  test.setTimeout(60_000);
+  const errors: string[] = [], requests: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => { if (request.url().includes('/datasets/')) requests.push(request.url()); });
+  await load(page, true);
+  const before = await page.evaluate(() => {
+    const s = (window as any).__observatory.state;
+    return { time: s.time, position: [...s.ship.position], scale: s.ship.scale,
+      label: s.modelLabel, description: s.modelDescription };
+  });
+  const initialRequests = [...requests];
+  // Install the clock only after real shader compilation and the first frame.
+  // Advance it only while rendering is stopped by the lost context.
+  await page.clock.install();
+  expect(await page.evaluate(() => {
+    const app = (window as any).__observatory;
+    const extension = app.renderer.gl.getExtension('WEBGL_lose_context');
+    (window as any).__lateRestore = () => extension.restoreContext();
+    extension?.loseContext(); return !!extension;
+  })).toBe(true);
+  await page.waitForFunction(() => !(window as any).__observatory.renderer);
+  await expect(page.locator('#startup-loader')).toBeVisible();
+  await page.clock.fastForward(8_100);
+  await expect(page.locator('#startup-loader')).toBeHidden();
+  await expect(page.getByRole('alert')).toContainText('Your browser has not restored graphics');
+  await expect(page.getByRole('button', { name: 'Reload page', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => {
+    const app = (window as any).__observatory;
+    return { renderer: !!app.renderer, loading: app.state.loading, available: app.state.flowAvailable };
+  })).toEqual({ renderer: false, loading: false, available: false });
+  expect(requests).toEqual(initialRequests);
+
+  // Timeout is an escape from the loader, not a reason to reject a genuine
+  // browser restoration that arrives later or to start an automatic reload.
+  await page.evaluate(() => (window as any).__lateRestore());
+  await page.waitForFunction(() => {
+    const app = (window as any).__observatory;
+    return app.renderer && app.startup.firstFrameReady > 0 && app.state.flowAvailable;
+  }, null, { timeout: 30_000 });
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('#startup-loader')).toBeHidden();
+  const after = await page.evaluate(() => {
+    const app = (window as any).__observatory, s = app.state;
+    return { snapshot: { time: s.time, position: [...s.ship.position], scale: s.ship.scale,
+      label: s.modelLabel, description: s.modelDescription }, playing: s.playing, audit: app.renderer.audit() };
+  });
+  expect(after.snapshot).toEqual(before); expect(after.playing).toBe(false);
+  expect(after.audit.finiteParticles).toBe(true); expect(after.audit.glError).toBe(0);
+  expect(requests).toEqual(initialRequests);
   expect(errors).toEqual([]);
 });

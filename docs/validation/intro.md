@@ -23,7 +23,16 @@ presentation precedes the next reset, and excess frame time is not carried
 into the new clip. This removes the old 300 ms post-endpoint hold and the
 possibility of a costly integration step skipping the whole transition.
 The configured 5–30 seconds excludes unavoidable GPU stalls. Background-tab
-time does not advance.
+time does not advance. On touch devices, expensive particle integration is
+split across GPU submissions with nonblocking completion checks. The
+previous complete image remains visible and the viewer clock waits until
+the pending frame is ready; that waiting time never becomes a catch-up
+integration request. Advancing mobile intervals are also shortened before
+submission to require at most 128 integration steps per particle. Field time,
+tracer time, and the procedural camera advance together; later frames continue
+to the same endpoint without an integration-budget reseed. The integration
+rule and particle identities are preserved, while frame subdivision changes.
+Playback can take longer on a GPU that cannot keep up.
 
 ## Loading
 
@@ -120,6 +129,14 @@ dust already in view keeps its position.
 
 ## Checks
 
+- Mobile GPU regression checks run in Chromium and desktop WebKit. Bounded
+  intervals cover the full `0 → 0.9999` approach, comparing every particle in
+  a roughly 4,800-particle population against the desktop renderer using the
+  same intervals. Checks also cover two consecutive generated clips, fixed
+  camera/field state during pending batches, and a GPU fence that never signals.
+  Missing context restoration leaves the loader after eight seconds; a late
+  restoration can still rebuild from cached data. Desktop WebKit coverage is
+  not an on-device iPhone Safari result.
 - Seeded sampler checks cover many generated clips: reproducibility,
   varied angles/durations/optics, finite normalized camera poses, shell
   ordering, focus framing, linear time, and black restart boundaries.

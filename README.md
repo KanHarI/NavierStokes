@@ -77,6 +77,6 @@ npm run data:core          # Isolated local core
 npm run data:preview       # Isolated heat exterior
 ```
 
-The site is static and deploys from `main` to GitHub Pages. A drifting snow screen covers data loading and GPU preparation. If the browser restores a lost graphics context, the viewer attempts to rebuild from cached data, preserving a manual view or restarting the automatic clip. Phone rendering uses smaller particle and image budgets. Touch gestures and graphics recovery have automated browser coverage.
+The site is static and deploys from `main` to GitHub Pages. A drifting snow screen covers data loading and GPU preparation. If the browser restores a lost graphics context, the viewer attempts to rebuild from cached data, preserving a manual view or restarting the automatic clip. Phone rendering uses smaller particle and image budgets. Expensive integration runs in bounded GPU batches and smaller time intervals; playback can slow down while continuing to the same endpoint. If graphics restoration or a pending GPU update stalls for eight seconds, a Reload button replaces the stalled view. Touch gestures and graphics recovery have automated browser coverage.
 
 Further details: [cinematic playback](docs/validation/intro.md), [shell and bokeh](docs/validation/shell.md), and [perspective calibration](docs/validation/projection.md).

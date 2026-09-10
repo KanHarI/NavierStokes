@@ -28,6 +28,23 @@ export interface TransportPlan {
   firstWeight: number;
 }
 
+/** Slow the viewer clock before submitting an expensive mobile interval.
+ * Field time and tracer time keep the same ratio; no trajectory is discarded.
+ * One spare step below the renderer's guard absorbs endpoint rounding.
+ */
+export function limitTransportFraction(request: TransportRequest, maxSteps = 127): number {
+  // Reuse the planner's input validation without its endpoint reseed policy.
+  planTransport({ ...request, maxSteps });
+  const { timeDelta, transportDelta, tauEnd, isCore } = request;
+  if (timeDelta === 0 || transportDelta === 0) return 1;
+  const ratio = Math.max(1, Math.abs(transportDelta / timeDelta));
+  const fraction = request.coreStepFraction ?? CORE_STEP_FRACTION;
+  const allowedDelta = isCore
+    ? (tauEnd + timeDelta) * -Math.expm1(-maxSteps * Math.log1p(fraction / ratio))
+    : maxSteps * EXTERIOR_STEP / ratio;
+  return Math.min(1, allowedDelta / timeDelta);
+}
+
 /**
  * Advancing core fields use geometric spacing in remaining physical time.
  * The sum of all physical substeps is exactly the requested time interval;

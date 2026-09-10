@@ -4,6 +4,7 @@ import { createUI } from './ui';
 import { createNavigation } from './navigation';
 import { loadField, sampleVelocity, type FieldData } from './field';
 import { advanceTime } from './time';
+import { limitTransportFraction } from './transport';
 import { Renderer } from './renderer';
 import { createIntroDirector, INTRO_FADE_SECONDS } from './intro';
 import { createGyroSteering } from './gyro';
@@ -18,6 +19,9 @@ let renderer: Renderer | undefined;
 let cachedField: FieldData | undefined;
 let graphicsLost = false;
 let graphicsRecoveries = 0;
+let graphicsRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
+let recoveryModelLabel = '';
+let recoveryModelDescription = '';
 let resumeIntroAfterRecovery = false;
 let recoveryHUD = false;
 let gyroRequest = 0;
@@ -35,6 +39,7 @@ let introFading = false;
 let introBlack = false;
 let introFadeElapsed = 0;
 let firstFrameReady = false;
+let pendingRender: { renderer: Renderer; args: [number, number, number]; introAtEndpoint: boolean; startedAt: number } | undefined;
 const startup = { dataStart: 0, dataReady: 0, rendererReady: 0, firstFrameReady: 0 };
 const startupLoader = document.querySelector<HTMLElement>('#startup-loader');
 const startupStage = document.querySelector<HTMLElement>('#startup-stage');
@@ -54,6 +59,7 @@ function stopIntro(updateUI = true) {
 
 function startIntro() {
   if (!renderer || !state.flowAvailable || !state.isCore) return;
+  renderer.reseed(); pendingRender = undefined;
   navigation.resetIntroLook();
   gyro.recalibrate();
   state.hudActive = false;
@@ -75,6 +81,7 @@ function startIntro() {
 
 function reseed() {
   stopIntro();
+  renderer?.cancelFrame(); pendingRender = undefined;
   // Fade out the old population before replacing it, then GPU particle ages
   // fade in the new population. No overlapping light populations are added.
   canvas.style.transition = 'opacity 140ms ease';
@@ -115,6 +122,7 @@ async function toggleGyro() {
   // A native permission sheet can suspend RAF without changing visibility.
   // Permission time belongs to the paused viewer, never a catch-up step.
   lastFrame = performance.now();
+  if (pendingRender) pendingRender.startedAt = lastFrame;
   state.gyroStatus = gyro.status(); ui.update();
 }
 
@@ -161,15 +169,21 @@ if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
 }
 
 function showError(error: unknown) {
+  clearTimeout(graphicsRecoveryTimer); graphicsRecoveryTimer = undefined;
   state.screensaver = false;
   if (startupLoader) startupLoader.hidden = true;
   state.introActive = false; canvas.style.opacity = '1';
   state.loading = false; state.playing = false; state.flowAvailable = false;
   state.status = error instanceof Error ? error.message : String(error);
   state.modelLabel = 'Preview unavailable'; state.modelDescription = state.status;
+  container.querySelectorAll('.load-error').forEach(notice => notice.remove());
   const notice = document.createElement('div'); notice.className = 'load-error'; notice.setAttribute('role', 'alert');
-  notice.style.cssText = 'position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);max-width:420px;padding:24px;background:#111c25;border:1px solid #9b7350;border-radius:12px;color:#e4c9b0;font:15px/1.6 system-ui;z-index:4';
-  notice.textContent = state.status; container.append(notice); ui.update();
+  notice.style.cssText = 'position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);width:min(420px,calc(100vw - 48px));padding:24px;background:#111;border:1px solid #777;border-radius:12px;color:#eee;font:15px/1.6 system-ui;z-index:4';
+  notice.textContent = state.status;
+  const reload = document.createElement('button'); reload.type = 'button'; reload.textContent = 'Reload page';
+  reload.style.cssText = 'display:block;min-height:44px;margin-top:18px;padding:10px 18px;border:1px solid #aaa;border-radius:6px;background:#222;color:#fff;font:inherit;cursor:pointer';
+  reload.addEventListener('click', () => location.reload());
+  notice.append(reload); container.append(notice); ui.update();
 }
 
 async function start() {
@@ -207,6 +221,14 @@ function frame(now: number) {
     frameID = requestAnimationFrame(frame);
     return;
   }
+  if (pendingRender) {
+    const pending = pendingRender;
+    if (pending.renderer === renderer && renderer.hasPendingFrame) {
+      submitFrame(now, pending.args, pending.introAtEndpoint, true);
+      return;
+    }
+    pendingRender = undefined;
+  }
   const dt = document.hidden ? 0 : Math.min(.05, Math.max(0, elapsed));
   if (elapsed > 0 && elapsed < 1) state.fps = state.fps ? state.fps * .9 + .1 / elapsed : 1 / elapsed;
   const clockElapsed = document.hidden ? 0 : Math.max(0, elapsed);
@@ -236,10 +258,22 @@ function frame(now: number) {
       introElapsed = Math.min(endpoint, introElapsed+clockElapsed);
       introAtEndpoint = introElapsed >= endpoint;
     }
-    const shot = introDirector.sample(introElapsed, state.timeMin, state.timeMax);
+    let shot = introDirector.sample(introElapsed, state.timeMin, state.timeMax);
     if (introAtEndpoint) shot.time = state.timeMax;
     const segment = shot.shot, restart = segment !== introSegment;
     timeDelta = restart ? 0 : Math.max(0, shot.time-state.time); transportDelta = timeDelta;
+    if (state.touchControls && !restart) {
+      const fraction = limitTransportFraction({ isCore: state.isCore,
+        tauEnd: renderer.field.manifest.time.singular-shot.time, timeDelta, transportDelta });
+      if (fraction < 1) {
+        // Keep the procedural camera and field on the same timeline. Excess
+        // wall time is discarded rather than caught up in another huge frame.
+        introElapsed -= timeDelta * (1-fraction) / shot.playbackSpeed;
+        shot = introDirector.sample(introElapsed, state.timeMin, state.timeMax);
+        introAtEndpoint = false;
+        timeDelta = Math.max(0, shot.time-state.time); transportDelta = timeDelta;
+      }
+    }
     if (restart) { renderer.reseed(); navigation.resetIntroLook(); gyro.recalibrate(); introSegment = segment; state.density = shot.density; }
     state.time = shot.time; state.playing = shot.time < state.timeMax;
     state.introShot = shot.shot; state.introProgress = shot.phase;
@@ -263,7 +297,12 @@ function frame(now: number) {
     : state.time;
     timeDelta = nextTime - state.time;
     transportDelta = state.independentDust ? clockElapsed * state.dustSpeed : timeDelta;
-    state.time = nextTime;
+    if (state.touchControls) {
+      const fraction = limitTransportFraction({ isCore: state.isCore,
+        tauEnd: renderer.field.manifest.time.singular-nextTime, timeDelta, transportDelta });
+      timeDelta *= fraction; transportDelta *= fraction;
+    }
+    state.time += timeDelta;
     if (state.time >= state.timeMax) state.playing = false;
   }
   const validShip = sampleVelocity(renderer.field, state.ship.position, state.time) !== null;
@@ -274,7 +313,28 @@ function frame(now: number) {
   if (reseedAt >= 0 && now >= reseedAt) {
     renderer.reseed(); reseedAt = -1; canvas.style.opacity = '1';
   }
-  try { renderer.render(dt, transportDelta, timeDelta); }
+  submitFrame(now, [dt, transportDelta, timeDelta], introAtEndpoint);
+}
+
+function submitFrame(now: number, args: [number, number, number], introAtEndpoint: boolean, continuing = false) {
+  if (!renderer || graphicsLost || disposed) return;
+  try {
+    if (renderer.render(...args) === false) {
+      const startedAt = pendingRender?.startedAt ?? now;
+      if (now-startedAt > 8_000) {
+        renderer.dispose(); pendingRender = undefined;
+        showError(new Error('The graphics update stalled. Reload the page to try again.'));
+        return;
+      }
+      pendingRender = { renderer, args, introAtEndpoint, startedAt };
+      frameID = requestAnimationFrame(frame);
+      return;
+    }
+    pendingRender = undefined;
+    // GPU backpressure pauses the viewer clock. Never add the time spent
+    // finishing this frame to the next frame's integration request.
+    if (continuing) lastFrame = performance.now();
+  }
   catch (error) {
     if (renderer.gl.isContextLost()) return;
     renderer.dispose(); showError(error); return;
@@ -301,7 +361,9 @@ const onContextLost = (event: Event) => {
   event.preventDefault();
   if (disposed || graphicsLost) return;
   graphicsLost = true; cancelAnimationFrame(frameID);
+  clearTimeout(graphicsRecoveryTimer); graphicsRecoveryTimer = undefined;
   resumeIntroAfterRecovery = state.introActive; recoveryHUD = state.hudActive;
+  recoveryModelLabel = state.modelLabel; recoveryModelDescription = state.modelDescription;
   cachedField = renderer?.field ?? cachedField;
   gyroRequest++; gyro.disable(); state.gyroActive = false; state.gyroPending = false;
   state.gyroStatus = 'Gyro is off.';
@@ -316,14 +378,27 @@ const onContextLost = (event: Event) => {
   if (startupStage) startupStage.textContent = state.status;
   if (startupLoader) startupLoader.hidden = false;
   ui.update();
+  // Some browsers never emit contextrestored after a GPU reset. Waiting is
+  // bounded, but a later genuine restoration remains eligible below.
+  graphicsRecoveryTimer = setTimeout(() => {
+    graphicsRecoveryTimer = undefined;
+    if (!disposed && graphicsLost) {
+      showError(new Error('Your browser has not restored graphics. Reload the page to try again.'));
+    }
+  }, 8_000);
 };
 const onContextRestored = () => {
   if (disposed || !graphicsLost || !cachedField || graphicsRecoveries >= 2) return;
+  clearTimeout(graphicsRecoveryTimer); graphicsRecoveryTimer = undefined;
   graphicsRecoveries++;
   try {
     renderer = new Renderer(canvas, state, cachedField); debug.renderer = renderer;
     graphicsLost = false; startup.rendererReady = performance.now();
+    container.querySelectorAll('.load-error').forEach(notice => notice.remove());
+    state.modelLabel = recoveryModelLabel; state.modelDescription = recoveryModelDescription;
     state.loading = false; state.flowAvailable = true; state.playing = false;
+    if (startupStage) startupStage.textContent = 'Preparing the restored view…';
+    if (startupLoader) startupLoader.hidden = false;
     gyro.recalibrate(); renderer.reseed();
     // Lost GPU particle buffers cannot retain their identities. Restart an
     // automatic clip cleanly; manual exploration keeps its pose, time and optics.
@@ -338,7 +413,10 @@ const onContextRestored = () => {
 };
 canvas.addEventListener('webglcontextlost', onContextLost);
 canvas.addEventListener('webglcontextrestored', onContextRestored);
-const onVisibility = () => { lastFrame = performance.now(); };
+const onVisibility = () => {
+  lastFrame = performance.now();
+  if (pendingRender) pendingRender.startedAt = lastFrame;
+};
 document.addEventListener('visibilitychange', onVisibility);
 const onManualInput = (event: Event) => {
   if (state.introActive && event.target instanceof Element && event.target.closest('input, select')) stopIntro(event.type !== 'input');
@@ -398,6 +476,7 @@ void start();
 
 if (import.meta.hot) import.meta.hot.dispose(() => {
   disposed = true; cancelAnimationFrame(frameID); renderer?.dispose(); navigation.dispose(); gyro.dispose(); ui.dispose();
+  clearTimeout(graphicsRecoveryTimer);
   canvas.removeEventListener('webglcontextlost', onContextLost);
   canvas.removeEventListener('webglcontextrestored', onContextRestored); document.removeEventListener('visibilitychange', onVisibility);
   document.removeEventListener('pointerdown', onManualInput, true); document.removeEventListener('input', onManualInput, true);

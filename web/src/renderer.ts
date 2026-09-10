@@ -7,6 +7,8 @@ import { planTransport, type TransportPlan } from './transport';
 import { PARTICLE_PROFILE_GLSL } from './particle-profile';
 
 const MAX_PARTICLES = 120_000;
+const MOBILE_BATCH_ITERATIONS = 500_000;
+const MOBILE_BATCH_PARTICLES = 4096;
 // On phones, the same angular samples are concentrated into fewer pixels.
 // Attenuate their light by focal length squared, preserving the established
 // desktop exposure and never adding extra brightness on larger displays.
@@ -299,6 +301,17 @@ color=sum*.25;}`;
 
 type Target = { texture: WebGLTexture; framebuffer: WebGLFramebuffer; width: number; height: number };
 type Program = { program: WebGLProgram; uniforms: Map<string, WebGLUniformLocation | null> };
+type BatchAudit = {
+  deferred: boolean; totalParticles: number; steps: number;
+  batches: number; completedBatches: number; completedParticles: number;
+  completedParticleSteps: number; maxBatchParticles: number; maxBatchIterations: number; canceled: boolean;
+};
+type ParticleFrame = {
+  state: AppState; count: number; requested: number; transportDelta: number;
+  input: number; output: number; seed: number; batchSize: number;
+  cursor: number; submittedCursor: number; fence: WebGLSync | null;
+  uniforms(): void; audit: BatchAudit;
+};
 
 export class Renderer {
   readonly gl: WebGL2RenderingContext;
@@ -330,6 +343,8 @@ export class Renderer {
   private lightOutput = 0;
   private residualOverflow = 0;
   private transportAudit: (TransportPlan & { reseeded: boolean }) | null = null;
+  private pendingFrame: ParticleFrame | null = null;
+  private batchAudit: BatchAudit | null = null;
   private disposed = false;
   private resizeObserver: ResizeObserver;
 
@@ -422,6 +437,9 @@ export class Renderer {
   }
   private destroyTarget(target: Target) { this.gl.deleteTexture(target.texture); this.gl.deleteFramebuffer(target.framebuffer); }
   private resize() {
+    // Keep the pending frame's viewport and optical targets intact. A resize
+    // notification is picked up at the beginning of the next complete frame.
+    if (this.pendingFrame) return;
     let ratio = Math.min(window.devicePixelRatio || 1, 1.5) * this.state.renderScale;
     if (this.state.touchControls) ratio = Math.min(ratio, Math.sqrt(450_000 / Math.max(1, this.canvas.clientWidth * this.canvas.clientHeight)));
     const w = Math.max(2, Math.round(this.canvas.clientWidth * ratio));
@@ -434,8 +452,8 @@ export class Renderer {
     while (x > 1 || y > 1) { x = Math.ceil(x / 2); y = Math.ceil(y / 2); this.reductions.push(this.target(x, y, true)); }
     this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
   }
-  private common(p: Program) {
-    const gl = this.gl; const s = this.state; const m = this.field.manifest; const t = this.field.table;
+  private common(p: Program, s = this.state) {
+    const gl = this.gl; const m = this.field.manifest; const t = this.field.table;
     this.texture(p, 'uProfile', this.profile, 0);
     if (this.swirlTexture) this.texture(p, 'uSwirl', this.swirlTexture, 2);
     if (this.heatTexture) this.texture(p, 'uHeat', this.heatTexture, 3);
@@ -450,74 +468,184 @@ export class Renderer {
     this.f(p, 'uShellFade', s.shellFade); this.f(p, 'uBoundaryBlur', s.shellBokeh);
     this.f(p, 'uTau', m.time.singular - s.time); this.f(p, 'uScale', s.ship.scale);
   }
-  reseed() { this.resetPending = true; }
+  get hasPendingFrame() { return this.pendingFrame !== null; }
+  cancelFrame() {
+    if (this.pendingFrame?.fence) this.gl.deleteSync(this.pendingFrame.fence);
+    if (this.pendingFrame) this.pendingFrame.audit.canceled = true;
+    this.pendingFrame = null;
+  }
+  reseed() { this.cancelFrame(); this.resetPending = true; }
   /** One startup barrier: shader compilation must not consume the first shot. */
   finishFrame() { this.gl.finish(); }
 
-  render(wallDelta: number, transportDelta: number, timeDelta = 0): void {
-    if (this.disposed) return;
-    this.resize(); const gl = this.gl; const s = this.state;
+  render(wallDelta: number, transportDelta: number, timeDelta = 0): boolean {
+    if (this.disposed) return false;
+    if (this.gl.isContextLost()) { this.cancelFrame(); return false; }
+    if (this.pendingFrame) return this.continueFrame();
+    this.resize();
+    const gl = this.gl, live = this.state;
+    // User input, resize notifications and debug audits may run between RAFs.
+    // All particles and the displayed image use this one immutable frame pose.
+    const s: AppState = { ...live, ship: { ...live.ship,
+      position: [...live.ship.position], orientation: [...live.ship.orientation] } };
     const bounds = shellBounds({ near: s.near, far: s.far, transitionWidth: s.shellFade });
     const shellVolume = 4 * Math.PI / 3 * (bounds.guard[1] ** 3 - bounds.guard[0] ** 3);
     const previousCount = this.count;
     const requested = Math.min(MAX_PARTICLES, Math.max(100, Math.round(s.density * shellVolume)));
     const desired = Math.min(this.capacity, requested);
     const change = Math.max(1, Math.ceil(this.capacity * wallDelta));
-    this.count = this.count === 0 ? desired : this.count + Math.max(-change, Math.min(change, desired - this.count));
-    s.particleCount = this.count;
-    if (s.ship.scale / this.previousScale > 1.3 || s.ship.scale / this.previousScale < .77) this.resetPending = true;
-    const observerVelocity = s.ship.position.map((p,i) => this.resetPending || wallDelta <= 0 ? 0 : (p-this.previousPosition[i])/wallDelta);
-    const observerScaleRate = this.resetPending || wallDelta <= 0 ? 0 : Math.log(s.ship.scale/this.previousScale)/wallDelta;
-    this.previousScale = s.ship.scale; this.previousPosition = [...s.ship.position];
+    const count = previousCount === 0 ? desired : previousCount + Math.max(-change, Math.min(change, desired - previousCount));
+    const fill = this.resetPending || s.ship.scale / this.previousScale > 1.3 || s.ship.scale / this.previousScale < .77;
+    const observerVelocity = s.ship.position.map((p,i) => fill || wallDelta <= 0 ? 0 : (p-this.previousPosition[i])/wallDelta);
+    const observerScaleRate = fill || wallDelta <= 0 ? 0 : Math.log(s.ship.scale/this.previousScale)/wallDelta;
     const transport = planTransport({ isCore: !!this.field.manifest.core,
       tauEnd: this.field.manifest.time.singular - s.time, timeDelta, transportDelta,
       maxSteps: this.field.swirl ? 4096 : 256 });
-    if (transport.reseed) s.status = 'Field time advanced · dust reseeded because this interval exceeds the integration budget';
-    if (transport.limited) s.status = 'Frozen-field dust speed limited by the integration budget · field time unchanged';
-    this.transportAudit = { ...transport, reseeded: this.resetPending || transport.reseed };
-    const next = 1 - this.index;
-    gl.useProgram(this.updateProgram.program); this.common(this.updateProgram);
-    gl.uniform2f(this.uniform(this.updateProgram, 'uShell'), ...bounds.guard);
-    this.i(this.updateProgram, 'uNewFrom', previousCount); this.i(this.updateProgram, 'uSpawnAttempts', 24);
-    gl.uniform3fv(this.uniform(this.updateProgram, 'uObserverVelocity'), observerVelocity);
-    this.f(this.updateProgram, 'uObserverScaleRate', observerScaleRate);
-    this.f(this.updateProgram, 'uTransportRate', wallDelta > 0 ? transport.actualDelta/wallDelta : 0);
-    this.i(this.updateProgram, 'uInflowCandidates', 12);
-    this.f(this.updateProgram, 'uDelta', transport.actualDelta); this.f(this.updateProgram, 'uWall', wallDelta);
-    this.f(this.updateProgram, 'uTauStart', transport.tauStart); this.f(this.updateProgram, 'uTimeDelta', timeDelta);
-    this.f(this.updateProgram, 'uGeometricDecay', transport.geometricDecay); this.f(this.updateProgram, 'uFirstWeight', transport.firstWeight);
-    this.f(this.updateProgram, 'uSeed', this.seed++); this.i(this.updateProgram, 'uSteps', transport.steps);
-    this.i(this.updateProgram, 'uFill', this.resetPending ? 1 : 0);
-    this.i(this.updateProgram, 'uReseed', this.transportAudit.reseeded ? 1 : 0); this.resetPending = false;
-    gl.bindVertexArray(this.updateVAOs[this.index]); gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.feedback);
-    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, this.particleBuffers[next]);
-    gl.enable(gl.RASTERIZER_DISCARD); gl.beginTransformFeedback(gl.POINTS); gl.drawArrays(gl.POINTS, 0, this.count); gl.endTransformFeedback();
-    gl.disable(gl.RASTERIZER_DISCARD); gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null); gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
-    this.index = next;
+    if (transport.reseed) live.status = 'Field time advanced · dust reseeded because this interval exceeds the integration budget';
+    if (transport.limited) live.status = 'Frozen-field dust speed limited by the integration budget · field time unchanged';
+    const reseeded = fill || transport.reseed;
+    this.transportAudit = { ...transport, reseeded };
+    const seed = this.seed;
+    const workSteps = reseeded ? 0 : transport.steps;
+    const deferred = s.touchControls && count * workSteps > MOBILE_BATCH_ITERATIONS;
+    if (s.touchControls && !reseeded && transport.steps > 128) {
+      throw new Error('Unsafe mobile particle interval: advance the viewer in smaller time intervals (at most 128 integration steps per frame).');
+    }
+    // Round bounded batches to a small group of vertices.
+    const batchSize = deferred ? Math.min(MOBILE_BATCH_PARTICLES,
+      Math.max(32, 16 * Math.floor(MOBILE_BATCH_ITERATIONS / Math.max(1, workSteps) / 16))) : count;
+    const audit: BatchAudit = { deferred, totalParticles: count, steps: workSteps,
+      batches: 0, completedBatches: 0, completedParticles: 0, completedParticleSteps: 0,
+      maxBatchParticles: 0, maxBatchIterations: 0, canceled: false };
+    this.batchAudit = audit;
+    const frame: ParticleFrame = { state: s, count, requested, transportDelta,
+      input: this.index, output: 1-this.index, seed, batchSize,
+      cursor: 0, submittedCursor: 0, fence: null, audit,
+      uniforms: () => {
+        // Restore unchanged uniforms and textures after any intervening audit;
+        // never recompute a seed, transport plan, or observer velocity per batch.
+        const p = this.updateProgram; gl.useProgram(p.program); this.common(p, s);
+        gl.uniform2f(this.uniform(p, 'uShell'), ...bounds.guard);
+        this.i(p, 'uNewFrom', previousCount); this.i(p, 'uSpawnAttempts', 24);
+        gl.uniform3fv(this.uniform(p, 'uObserverVelocity'), observerVelocity);
+        this.f(p, 'uObserverScaleRate', observerScaleRate);
+        this.f(p, 'uTransportRate', wallDelta > 0 ? transport.actualDelta/wallDelta : 0);
+        this.i(p, 'uInflowCandidates', 12);
+        this.f(p, 'uDelta', transport.actualDelta); this.f(p, 'uWall', wallDelta);
+        this.f(p, 'uTauStart', transport.tauStart); this.f(p, 'uTimeDelta', timeDelta);
+        this.f(p, 'uGeometricDecay', transport.geometricDecay); this.f(p, 'uFirstWeight', transport.firstWeight);
+        this.f(p, 'uSeed', seed); this.i(p, 'uSteps', transport.steps);
+        this.i(p, 'uFill', fill ? 1 : 0); this.i(p, 'uReseed', reseeded ? 1 : 0);
+      } };
+    if (deferred) {
+      this.pendingFrame = frame;
+      this.submitBatch(frame);
+      return false;
+    }
+    this.submitBatch(frame);
+    this.completeBatch(frame);
+    this.completeFrame(frame);
+    return true;
+  }
+
+  private submitBatch(frame: ParticleFrame) {
+    const gl = this.gl, start = frame.cursor, count = Math.min(frame.batchSize, frame.count-start);
+    frame.uniforms();
+    // Keep integration off the default framebuffer while its last image is
+    // being presented across RAFs (the canvas need not preserve its buffer).
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.targets[0].framebuffer);
+    gl.bindVertexArray(this.updateVAOs[frame.input]);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.feedback);
+    // Keep original vertex IDs and write each batch to its own output range.
+    if (frame.audit.deferred) gl.bindBufferRange(gl.TRANSFORM_FEEDBACK_BUFFER, 0,
+      this.particleBuffers[frame.output], start * 16, count * 16);
+    else gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, this.particleBuffers[frame.output]);
+    gl.enable(gl.RASTERIZER_DISCARD);
+    gl.beginTransformFeedback(gl.POINTS);
+    gl.drawArrays(gl.POINTS, start, count);
+    gl.endTransformFeedback();
+    gl.disable(gl.RASTERIZER_DISCARD);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    frame.submittedCursor = start + count;
+    frame.audit.batches++;
+    frame.audit.maxBatchParticles = Math.max(frame.audit.maxBatchParticles, count);
+    frame.audit.maxBatchIterations = Math.max(frame.audit.maxBatchIterations, count * frame.audit.steps);
+    if (frame.audit.deferred) {
+      frame.fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      gl.flush();
+      if (!frame.fence) {
+        this.cancelFrame();
+        if (!gl.isContextLost()) throw new Error('Could not fence the mobile particle update.');
+      }
+    }
+  }
+
+  private completeBatch(frame: ParticleFrame) {
+    frame.cursor = frame.submittedCursor;
+    frame.audit.completedBatches++;
+    frame.audit.completedParticles = frame.cursor;
+    frame.audit.completedParticleSteps = frame.cursor * frame.audit.steps;
+  }
+
+  private continueFrame(): boolean {
+    const gl = this.gl, frame = this.pendingFrame!;
+    if (!frame.fence) { this.cancelFrame(); return false; }
+    // Zero timeout: the browser gets its event loop back between every batch.
+    // WebGL forbids a new sync from signaling inside the task that created it.
+    const result = gl.clientWaitSync(frame.fence, 0, 0);
+    if (result === gl.TIMEOUT_EXPIRED) { gl.flush(); return false; }
+    if (result === gl.WAIT_FAILED) {
+      this.cancelFrame();
+      if (gl.isContextLost()) return false;
+      throw new Error('Mobile particle update synchronization failed.');
+    }
+    if (result !== gl.ALREADY_SIGNALED && result !== gl.CONDITION_SATISFIED) {
+      this.cancelFrame(); throw new Error('Unexpected particle update synchronization result.');
+    }
+    gl.deleteSync(frame.fence); frame.fence = null;
+    this.completeBatch(frame);
+    if (frame.cursor < frame.count) { this.submitBatch(frame); return false; }
+    this.pendingFrame = null;
+    this.completeFrame(frame);
+    return true;
+  }
+
+  private completeFrame(frame: ParticleFrame) {
+    // Only a complete output becomes the next input. Cancellation can therefore
+    // discard a partially written output without advancing any particle twice.
+    this.index = frame.output; this.count = frame.count; this.seed = frame.seed + 1;
+    this.previousScale = frame.state.ship.scale; this.previousPosition = [...frame.state.ship.position];
+    this.resetPending = false; this.state.particleCount = frame.count;
+    this.drawFrame(frame);
+  }
+
+  private drawFrame(frame: ParticleFrame) {
+    const gl = this.gl, s = frame.state;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.targets[0].framebuffer); gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(this.drawProgram.program); this.common(this.drawProgram);
+    gl.useProgram(this.drawProgram.program); this.common(this.drawProgram, s);
     gl.uniform4fv(this.uniform(this.drawProgram, 'uOrientation'), s.ship.orientation);
     gl.uniform2f(this.uniform(this.drawProgram, 'uResolution'), this.canvas.width, this.canvas.height);
     gl.uniform2f(this.uniform(this.drawProgram, 'uShell'), s.near, s.far);
     this.f(this.drawProgram, 'uFocus', s.focus); this.f(this.drawProgram, 'uBlur', s.blur);
     this.f(this.drawProgram, 'uFov', s.fov * Math.PI / 180); this.f(this.drawProgram, 'uExposure', s.exposure);
     this.f(this.drawProgram, 'uBrightness', (s.touchControls ? imageExposureScale(this.canvas.width, s.fov) : 1)
-      * Math.max(1, requested / this.capacity)
+      * Math.max(1, frame.requested / this.capacity)
       * (s.densityCompensation ? 500 / Math.max(1, s.density) : 1));
     this.f(this.drawProgram, 'uColorMax', s.maxSpeed); this.i(this.drawProgram, 'uColor', s.colorMode === 'speed' ? 1 : 0);
-    const shutter = s.introActive && transportDelta > 0
+    const shutter = s.introActive && frame.transportDelta > 0
       ? Math.min(.02 * (this.field.manifest.time.singular-s.time), s.playbackSpeed * .035) : 0;
     this.f(this.drawProgram, 'uShutter', shutter);
     this.i(this.drawProgram, 'uSaturation', s.distanceSaturation ? 1 : 0);
     gl.bindVertexArray(this.drawVAOs[this.index]); gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE);
-    gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.count); gl.disable(gl.BLEND);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, frame.count); gl.disable(gl.BLEND);
     gl.bindVertexArray(this.emptyVAO);
     const output = this.redistribute(this.targets[0]);
     if (performance.now() - this.lastAnalysis > 1500) {
       const input = this.measure(this.targets[0]); const result = this.measure(output);
       this.lightInput = input[0]; this.lightOutput = result[0]; this.residualOverflow = result[1];
-      s.overflow = result[0] > 0 ? result[1] / result[0] : 0;
+      this.state.overflow = result[0] > 0 ? result[1] / result[0] : 0;
       this.lastAnalysis = performance.now();
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -567,10 +695,14 @@ export class Renderer {
     return result;
   }
 
-  audit() {
-    const gl = this.gl; const particles = new Float32Array(Math.min(this.count, 128) * 4);
+  audit(sampleLimit = 128) {
+    const limit = Number.isFinite(sampleLimit) ? Math.max(0, Math.min(MAX_PARTICLES, Math.floor(sampleLimit))) : 128;
+    const gl = this.gl; const particles = new Float32Array(Math.min(this.count, limit) * 4);
     gl.bindBuffer(gl.COPY_READ_BUFFER, this.particleBuffers[this.index]); gl.getBufferSubData(gl.COPY_READ_BUFFER, 0, particles); gl.bindBuffer(gl.COPY_READ_BUFFER, null);
-    return { transport: this.transportAudit, lightMeasuredAt: this.lastAnalysis, glError: gl.getError(), finiteParticles: [...particles].every(Number.isFinite), particleSamples: [...particles],
+    return { transport: this.transportAudit, batching: this.batchAudit ? { ...this.batchAudit,
+      pending: this.hasPendingFrame, cursor: this.pendingFrame?.cursor ?? this.batchAudit.completedParticles,
+      submittedCursor: this.pendingFrame?.submittedCursor ?? this.batchAudit.completedParticles } : null,
+      lightMeasuredAt: this.lastAnalysis, glError: gl.getError(), finiteParticles: [...particles].every(Number.isFinite), particleSamples: [...particles],
       lightInput: this.lightInput, lightOutput: this.lightOutput, residualOverflow: this.residualOverflow };
   }
 
@@ -796,7 +928,7 @@ export class Renderer {
     }
   }
   dispose() {
-    if (this.disposed) return; this.disposed = true; this.resizeObserver.disconnect(); const gl = this.gl;
+    if (this.disposed) return; this.cancelFrame(); this.disposed = true; this.resizeObserver.disconnect(); const gl = this.gl;
     [...this.targets, ...this.reductions].forEach(t => this.destroyTarget(t));
     this.programs.forEach(p => gl.deleteProgram(p.program)); this.particleBuffers.forEach(b => gl.deleteBuffer(b));
     [...this.updateVAOs, ...this.drawVAOs, this.emptyVAO].forEach(v => gl.deleteVertexArray(v));

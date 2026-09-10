@@ -1,4 +1,70 @@
 import { expect, test } from '@playwright/test';
+import { limitTransportFraction, planTransport, type TransportRequest } from '../src/transport';
+
+test('the mobile clock limiter preserves time ratios within the shader step budget', () => {
+  for (const isCore of [true, false]) {
+    for (const ratio of [1, 4, -2, .25]) {
+      for (const budget of [7, 63, 127]) {
+        const request: TransportRequest = { isCore, tauEnd: .0001,
+          timeDelta: .9999, transportDelta: .9999*ratio };
+        const fraction = limitTransportFraction(request, budget);
+        expect(fraction).toBeGreaterThan(0);
+        expect(fraction).toBeLessThan(1);
+        const delta = fraction*request.timeDelta;
+        const plan = planTransport({ ...request, tauEnd: 1-delta,
+          timeDelta: delta, transportDelta: fraction*request.transportDelta,
+          maxSteps: budget+1 });
+        // The production limit reserves one extra shader iteration for rounding
+        // when reconstructing tau from the advanced physical clock.
+        expect(plan.steps).toBeLessThanOrEqual(budget+1);
+        expect(plan.reseed).toBe(false);
+        expect(plan.limited).toBe(false);
+        expect(plan.actualDelta/plan.timeDelta).toBeCloseTo(ratio, 13);
+        expect(plan.tauStart).toBeCloseTo(1, 14);
+      }
+    }
+  }
+});
+
+test('limited intervals eventually cover the full blowup approach without dropping tracer time', () => {
+  const target = .9999;
+  for (const ratio of [1, 3, -1]) {
+    let time = 0, tracerTime = 0, chunks = 0;
+    while (time < target) {
+      const remaining = target-time;
+      const fraction = limitTransportFraction({ isCore: true, tauEnd: 1-target,
+        timeDelta: remaining, transportDelta: remaining*ratio });
+      const nextTime = fraction === 1 ? target : time+remaining*fraction;
+      expect(nextTime).toBeGreaterThan(time);
+      expect(nextTime).toBeLessThanOrEqual(target);
+      const delta = nextTime-time;
+      const plan = planTransport({ isCore: true, tauEnd: 1-nextTime,
+        timeDelta: delta, transportDelta: delta*ratio, maxSteps: 128 });
+      expect(plan.reseed).toBe(false);
+      expect(plan.limited).toBe(false);
+      expect(plan.steps).toBeLessThanOrEqual(128);
+      expect(plan.actualDelta).toBe(delta*ratio);
+      tracerTime += plan.actualDelta;
+      time = nextTime;
+      expect(++chunks).toBeLessThan(100);
+    }
+    expect(chunks).toBeGreaterThan(20);
+    expect(time).toBe(target);
+    expect(tracerTime).toBeCloseTo(target*ratio, 12);
+  }
+});
+
+test('the clock limiter leaves safe, paused and frozen-field requests unchanged', () => {
+  for (const request of [
+    { isCore: true, tauEnd: .8, timeDelta: .001, transportDelta: .001 },
+    { isCore: false, tauEnd: .8, timeDelta: .001, transportDelta: .001 },
+    { isCore: true, tauEnd: .0001, timeDelta: .9999, transportDelta: 0 },
+    { isCore: true, tauEnd: .0001, timeDelta: 0, transportDelta: .1 },
+    { isCore: true, tauEnd: .0001, timeDelta: 0, transportDelta: 0 },
+  ]) expect(limitTransportFraction(request)).toBe(1);
+  expect(() => limitTransportFraction({ isCore: true, tauEnd: 0,
+    timeDelta: 1, transportDelta: 1 })).toThrow('Invalid particle integration request');
+});
 
 test('adaptive substeps span the entire requested physical interval', async ({ page }) => {
   await page.goto('/?field=core&debug=1');
