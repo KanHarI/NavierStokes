@@ -18,7 +18,7 @@ The underlying core checkpoint reconstructs a convergent local solution of the a
 
 Global matching remains open. In particular, the selected broad angular parameter fails a continuation gate in Appendix B, and the pressure is a local diagnostic datum rather than the outer-matched schedule. The existing heat exterior remains a separate selectable checkpoint. None of these checkpoints is presented as a globally assembled leading vortex or the complete corrected construction. The next scientific work is constructive outer scheduling, admissible continuation parameters, and annular matching with their measured stress conditions.
 
-The small generator and browser do not exhaust the final one-hour computation budget. No full high-resolution run has been performed. GitHub Pages now publishes the static build from main; the requested custom domain is pending DNS setup. The first checkpoint does not complete Milestone 1's full leading-flow feasibility requirement or authorize labeling the viewer a completed blowup simulation.
+The small generator and browser do not exhaust the final one-hour computation budget. No full high-resolution run has been performed. GitHub Pages publishes the static build from main at https://navierstokes.kanhar.art/ with HTTPS enforced. The first checkpoint does not complete Milestone 1's full leading-flow feasibility requirement or authorize labeling the viewer a completed blowup simulation.
 
 ## 2. Requirements and boundaries
 

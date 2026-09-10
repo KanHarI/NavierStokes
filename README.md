@@ -1,6 +1,6 @@
 ![Luminous fluid particles in the Navier–Stokes observatory](docs/images/observatory.png)
 
-**[Enter the observatory →](https://kanhari.github.io/NavierStokes/)**
+**[Enter the observatory →](https://navierstokes.kanhar.art/)**
 
 # Navier–Stokes Observatory
 
