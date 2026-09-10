@@ -94,6 +94,10 @@ Only dust in the observation shell, its transition bands, and a hidden buffer is
 
 Controls are provisional and will be tuned during use. Position, orientation, and positive observation scale are independent state. Movement uses the ship's local axes; scaling is multiplicative. Changing observation scale initially keeps the ship's position fixed and scales its travel speed and observation distances.
 
+On mobile, tap **Tap to look around**, then drag to steer and **pinch to change radar distance**. A compact HUD keeps radar range, focus, ISO, view width, and time visible. **Motion** optionally enables calibrated phone-tilt steering; the browser may request sensor permission. Drag remains available when sensors are missing or permission is denied. **Take control** pauses the movie for manual exploration, **Settings** opens a scrollable control sheet, and **Auto** returns to the cinematic sequence. Tap the screen to exit Screensaver. Desktop steering highlights **Z/X** as the radar-distance controls.
+
+Phone exposure attenuates particle light for the narrower render target; desktop exposure retains its established calibration. Gyro math and permissions are tested with synthetic sensor events, and touch gestures are tested in mobile browser emulation. Physical-device sensor feel still needs evaluation on phones.
+
 All optical controls are also available in the exploration panel. Later coupling presets may coordinate scale, travel speed, viewing distance, and field of view, including a dolly zoom around a selected target.
 
 ### Light and exposure

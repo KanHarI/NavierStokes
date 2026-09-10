@@ -45,12 +45,13 @@ export function createNavigation(canvas: HTMLCanvasElement, state: AppState) {
   let introLook: Quat = [0, 0, 0, 1];
   let introOffset: Vec3 = [0, 0, 0];
   let introOptics = neutralOptics();
+  const touches = new Map<number, { x: number; y: number }>();
   const flightKeys = new Set(['KeyW', 'KeyS', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown',
     'KeyQ', 'KeyE', 'KeyZ', 'KeyX', 'ShiftLeft', 'ShiftRight',
     'Minus', 'Equal', 'BracketLeft', 'BracketRight', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6']);
   state.ship.orientation = normalize(state.ship.orientation);
 
-  const clearKeys = () => { keys.clear(); state.boosting = false; };
+  const clearKeys = () => { keys.clear(); touches.clear(); state.boosting = false; };
   const keydown = (event: KeyboardEvent) => {
     if (isEditing(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.code === 'Space') {
@@ -65,16 +66,49 @@ export function createNavigation(canvas: HTMLCanvasElement, state: AppState) {
     state.boosting = keys.has('ShiftLeft') || keys.has('ShiftRight');
   };
   const keyup = (event: KeyboardEvent) => { keys.delete(event.code); state.boosting = keys.has('ShiftLeft') || keys.has('ShiftRight'); };
-  const mousemove = (event: MouseEvent) => {
-    if (!state.pointerLocked || document.pointerLockElement !== canvas) return;
-    const sensitivity = 0.0018;
-    const yaw = -event.movementX * sensitivity / 2;
-    const pitch = -event.movementY * sensitivity / 2;
+  const look = (dx: number, dy: number, sensitivity: number) => {
+    const yaw = -dx * sensitivity / 2;
+    const pitch = -dy * sensitivity / 2;
     const q = multiply(state.introActive ? introLook : state.ship.orientation, [0, Math.sin(yaw), 0, Math.cos(yaw)]);
     const looked = normalize(multiply(q, [Math.sin(pitch), 0, 0, Math.cos(pitch)]));
     if (state.introActive) introLook = looked;
     else state.ship.orientation = looked;
   };
+  const mousemove = (event: MouseEvent) => {
+    if (state.pointerLocked && document.pointerLockElement === canvas) look(event.movementX, event.movementY, .0018);
+  };
+  const touchEnabled = () => state.touchControls && state.hudActive && !state.screensaver && !state.touchSettings;
+  const pointerdown = (event: PointerEvent) => {
+    if (event.pointerType !== 'touch' || !touchEnabled() || touches.size >= 2) return;
+    event.preventDefault();
+    touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    canvas.setPointerCapture(event.pointerId);
+  };
+  const span = () => {
+    const [a, b] = [...touches.values()];
+    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+  };
+  const pointermove = (event: PointerEvent) => {
+    const previous = touches.get(event.pointerId);
+    if (!previous || !touchEnabled()) return;
+    event.preventDefault();
+    const oldSpan = span();
+    touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (touches.size === 1) look(event.clientX - previous.x, event.clientY - previous.y, .004);
+    else {
+      const newSpan = span();
+      if (oldSpan < 8 || newSpan < 8) return;
+      const ratio = oldSpan / newSpan;
+      if (state.introActive) introOptics.radarRange = clamp(introOptics.radarRange * ratio, .01, 100);
+      else Object.assign(state, adjustOptics(state, { ...neutralOptics(), radarRange: ratio }));
+    }
+  };
+  const pointerup = (event: PointerEvent) => { touches.delete(event.pointerId); };
+  canvas.addEventListener('pointerdown', pointerdown);
+  canvas.addEventListener('pointermove', pointermove);
+  canvas.addEventListener('pointerup', pointerup);
+  canvas.addEventListener('pointercancel', pointerup);
+  canvas.addEventListener('lostpointercapture', pointerup);
   const lockchange = () => {
     state.pointerLocked = document.pointerLockElement === canvas;
     clearKeys();
@@ -88,6 +122,10 @@ export function createNavigation(canvas: HTMLCanvasElement, state: AppState) {
   window.addEventListener('blur', clearKeys);
 
   return {
+    rotateLook(delta: Quat) {
+      if (state.introActive) introLook = normalize(multiply(introLook, delta));
+      else state.ship.orientation = normalize(multiply(state.ship.orientation, delta));
+    },
     applyIntroOrientation(base: Quat): Quat { return normalize(multiply(base, introLook)); },
     applyIntroPose(base: { position: Vec3; orientation: Quat; scale: number }) {
       const offset = rotate(introOffset, base.orientation);
@@ -158,6 +196,11 @@ export function createNavigation(canvas: HTMLCanvasElement, state: AppState) {
       clearKeys();
     },
     dispose() {
+      canvas.removeEventListener('pointerdown', pointerdown);
+      canvas.removeEventListener('pointermove', pointermove);
+      canvas.removeEventListener('pointerup', pointerup);
+      canvas.removeEventListener('pointercancel', pointerup);
+      canvas.removeEventListener('lostpointercapture', pointerup);
       document.removeEventListener('keydown', keydown);
       document.removeEventListener('keyup', keyup);
       document.removeEventListener('mousemove', mousemove);

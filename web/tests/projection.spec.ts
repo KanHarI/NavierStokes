@@ -42,3 +42,21 @@ test('a uniform dust shell has no camera-centered brightness bias across field o
     expect(sample.maxToMin, label).toBeLessThan(1.12);
   }
 });
+
+test('mobile exposure remains consistent across portrait, landscape, and render resolution', async ({ page }) => {
+  await page.goto('/?field=exterior&debug=1');
+  await page.waitForFunction(() => (window as any).__observatory?.renderer);
+  const samples = await page.evaluate(() => {
+    const renderer = (window as any).__observatory.renderer;
+    return [[320, 180], [160, 90], [195, 422]].map(([width, height]) => ({
+      width, height, ...renderer.auditProjection(width, height),
+    }));
+  });
+  const reference = samples[0].cases[0].regions[0].mean;
+  for (const sample of samples) {
+    expect(sample.glError).toBe(0);
+    for (const view of sample.cases) for (const region of view.regions) {
+      expect(Math.abs(region.mean / reference - 1)).toBeLessThan(.1);
+    }
+  }
+});

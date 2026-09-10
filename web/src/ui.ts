@@ -24,7 +24,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
       </nav>
     </header>
     <aside class="control-panel" id="flight-controls" aria-label="Exploration controls">
-      <div class="panel-top"><h2>Observation controls</h2><span>ESC to interact</span></div>
+      <div class="panel-top"><h2>Observation controls</h2><span>ESC to interact</span><button class="quiet-button touch-close" id="touch-close">Done</button></div>
       <details class="control-section" open><summary>Optics & light</summary><div class="section-content" id="optics-controls"></div></details>
       <details class="control-section"><summary>Ship & scale</summary><div class="section-content" id="ship-controls"></div></details>
       <details class="control-section"><summary>Dust & color</summary><div class="section-content" id="dust-controls"></div></details>
@@ -65,6 +65,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
       <div class="intro-progress" role="progressbar" aria-label="Current clip progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
     </section>
     <section class="flight-hud" id="flight-hud" aria-label="Flight instruments and keyboard controls" hidden>
+      <div class="radar-steering-hint"><span class="radar-key">Z</span><span class="radar-key">X</span><span><strong>Explore the depth</strong><small>Radar nearer / farther · steer with the mouse</small></span></div>
       <div class="hud-instruments" tabindex="0" aria-label="All viewer instrument readings">
         <div class="hud-heading">RADAR RANGE <output id="hud-range"></output></div>
         <div class="hud-range-bar" aria-hidden="true"><span></span><i></i></div>
@@ -90,6 +91,16 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
         <button id="take-control" class="quiet-button">Press Space to take control</button>
       </div>
     </section>
+    <div class="touch-toolbar" hidden>
+      <p class="touch-hint"><strong>Pinch to change radar distance</strong><span>Drag to look · or enable motion steering</span></p>
+      <p class="touch-motion-status" id="touch-motion-status" role="status" hidden></p>
+      <div class="touch-actions">
+        <button class="quiet-button" id="touch-auto" aria-label="Return to auto">Auto</button>
+        <button class="quiet-button" id="touch-manual">Take control</button>
+        <button class="quiet-button" id="touch-gyro" aria-label="Motion steering" aria-pressed="false">Motion</button>
+        <button class="quiet-button" id="touch-settings" aria-expanded="false" aria-controls="flight-controls">Settings</button>
+      </div>
+    </div>
     <section class="telemetry" aria-label="Live telemetry">
       <div><div class="instrument-label">Observation scale</div><div class="instrument-number"><span id="ship-scale">1.00</span><small>×</small></div></div>
       <div><div class="instrument-label">Local tracers</div><div class="instrument-number" id="particle-count">—</div></div>
@@ -286,6 +297,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     const leavingIntro = root.classList.contains('is-intro');
     if (state.introActive) actions.stopIntro();
     panel.hidden = leavingIntro ? false : !panel.hidden;
+    if (state.touchControls) { state.hudActive = true; state.touchSettings = true; panel.hidden = false; result.update(); }
     controlsToggle.setAttribute('aria-expanded', String(!panel.hidden));
     if (!panel.hidden && innerWidth < 760) { help.hidden = true; helpToggle.setAttribute('aria-expanded', 'false'); }
   });
@@ -299,6 +311,18 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
   on(find('#take-control'), 'click', () => actions.enterFlight());
   on(replayIntro, 'click', () => actions.startIntro());
   on(find('#screensaver'), 'click', () => actions.startScreensaver());
+  on(find('#touch-auto'), 'click', () => actions.returnToAuto());
+  on(find('#touch-gyro'), 'click', () => actions.toggleGyro());
+  on(find('#touch-manual'), 'click', () => {
+    if (state.introActive) actions.enterFlight();
+    else if (hasFlow()) state.playing = !state.playing;
+    result.update();
+  });
+  on(find('#touch-settings'), 'click', () => {
+    if (state.introActive) actions.stopIntro();
+    state.touchSettings = !state.touchSettings; panel.hidden = false; result.update();
+  });
+  on(find('#touch-close'), 'click', () => { state.touchSettings = false; result.update(); });
   on(find('#reset-view'), 'click', () => actions.reset());
   on(find('#reseed-dust'), 'click', () => actions.reseed());
   on(play, 'click', () => { if (hasFlow()) state.playing = !state.playing; });
@@ -313,6 +337,18 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
       root.classList.toggle('is-intro', state.introActive);
       root.classList.toggle('is-hud', state.hudActive);
       root.classList.toggle('is-screensaver', state.screensaver);
+      root.classList.toggle('is-touch', state.touchControls);
+      root.classList.toggle('is-touch-settings', state.touchControls && state.touchSettings);
+      find('.touch-toolbar').hidden = !state.touchControls || !state.hudActive;
+      find('#touch-manual').textContent = state.introActive ? 'Take control' : state.playing ? 'Pause' : 'Play';
+      find('#touch-settings').setAttribute('aria-expanded', String(state.touchSettings));
+      find('#touch-gyro').setAttribute('aria-pressed', String(state.gyroActive));
+      find<HTMLButtonElement>('#touch-gyro').disabled = state.gyroPending;
+      find('#touch-gyro').textContent = state.gyroPending ? 'Allow…' : state.gyroActive ? 'Motion on' : 'Motion';
+      find('#touch-motion-status').textContent = state.gyroStatus;
+      find('#touch-motion-status').hidden = !state.gyroStatus;
+      find('#explore-flow').innerHTML = `${state.touchControls ? 'Tap to look around' : 'Click to look around'} <span aria-hidden="true">↗</span>`;
+      find('#enter-flight').textContent = state.touchControls ? 'Touch to explore' : 'Click to fly ↗';
       find<HTMLButtonElement>('#screensaver').disabled = !hasFlow() || !state.isCore;
       introCard.hidden = !state.introActive;
       find('#intro-look-prompt').hidden = !state.introActive || state.hudActive || state.pointerLocked;

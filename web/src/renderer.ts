@@ -6,6 +6,12 @@ import { SHELL_GLSL, shellBounds } from './shell';
 import { planTransport, type TransportPlan } from './transport';
 
 const MAX_PARTICLES = 120_000;
+// On phones, the same angular samples are concentrated into fewer pixels.
+// Attenuate their light by focal length squared, preserving the established
+// desktop exposure and never adding extra brightness on larger displays.
+function imageExposureScale(width: number, horizontalFov: number) {
+  return Math.min(1, (width / 1280 * Math.tan(65 * Math.PI / 360) / Math.tan(horizontalFov * Math.PI / 360)) ** 2);
+}
 const LUMA = 'vec3(0.2126,0.7152,0.0722)';
 const fullscreen = `#version 300 es
 void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);gl_Position=vec4(p*2.-1.,0,1);}`;
@@ -462,7 +468,8 @@ export class Renderer {
     gl.uniform2f(this.uniform(this.drawProgram, 'uShell'), s.near, s.far);
     this.f(this.drawProgram, 'uFocus', s.focus); this.f(this.drawProgram, 'uBlur', s.blur);
     this.f(this.drawProgram, 'uFov', s.fov * Math.PI / 180); this.f(this.drawProgram, 'uExposure', s.exposure);
-    this.f(this.drawProgram, 'uBrightness', s.densityCompensation ? 500 / Math.max(1, s.density) : 1);
+    this.f(this.drawProgram, 'uBrightness', (s.touchControls ? imageExposureScale(this.canvas.width, s.fov) : 1)
+      * (s.densityCompensation ? 500 / Math.max(1, s.density) : 1));
     this.f(this.drawProgram, 'uColorMax', s.maxSpeed); this.i(this.drawProgram, 'uColor', s.colorMode === 'speed' ? 1 : 0);
     const shutter = s.introActive && transportDelta > 0
       ? Math.min(.02 * (this.field.manifest.time.singular-s.time), s.playbackSpeed * .035) : 0;
@@ -665,8 +672,8 @@ export class Renderer {
   }
 
   /** Isolate the camera response with a fixed, isotropic, valid-domain shell. */
-  auditProjection() {
-    const gl = this.gl; const width = 320; const height = 240; const count = 80_000;
+  auditProjection(width = 320, height = 240) {
+    const gl = this.gl; const count = 80_000;
     const target = this.target(width, height);
     const buffer = gl.createBuffer()!; const vao = gl.createVertexArray()!;
     const particles = new Float32Array(count * 4);
@@ -699,7 +706,8 @@ export class Renderer {
         gl.uniform2f(this.uniform(p, 'uResolution'), width, height); gl.uniform2f(this.uniform(p, 'uShell'), 1, 3);
         gl.uniform2f(this.uniform(p, 'uOpticalShell'), 1, 3);
         this.f(p, 'uScale', .5); this.f(p, 'uFocus', 1); this.f(p, 'uBlur', 6);
-        this.f(p, 'uFov', fov * Math.PI / 180); this.f(p, 'uExposure', -6); this.f(p, 'uBrightness', 1); this.i(p, 'uColor', 0);
+        this.f(p, 'uFov', fov * Math.PI / 180); this.f(p, 'uExposure', -6);
+        this.f(p, 'uBrightness', imageExposureScale(width, fov)); this.i(p, 'uColor', 0);
         this.f(p, 'uShutter', 0);
         gl.bindVertexArray(vao); gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, count); gl.disable(gl.BLEND);

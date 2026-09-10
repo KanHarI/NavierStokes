@@ -6,12 +6,14 @@ import { loadField, sampleVelocity } from './field';
 import { advanceTime } from './time';
 import { Renderer } from './renderer';
 import { createIntroDirector, INTRO_FADE_SECONDS } from './intro';
+import { createGyroSteering } from './gyro';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#space')!;
 const container = document.querySelector<HTMLElement>('#interface')!;
 canvas.tabIndex = -1;
 const state = initialState();
 const navigation = createNavigation(canvas, state);
+const gyro = createGyroSteering();
 let renderer: Renderer | undefined;
 let frameID = 0;
 let disposed = false;
@@ -47,7 +49,9 @@ function stopIntro(updateUI = true) {
 function startIntro() {
   if (!renderer || !state.flowAvailable || !state.isCore) return;
   navigation.resetIntroLook();
+  gyro.recalibrate();
   state.hudActive = false;
+  state.touchSettings = false;
   state.introActive = true; state.playing = true;
   state.independentDust = false; state.colorMode = 'white'; state.distanceSaturation = false;
   state.timeMode = 'linear'; state.density = 70; state.exposure = 2.5;
@@ -73,6 +77,10 @@ function reseed() {
 }
 
 function lookAround() {
+  if (state.touchControls) {
+    state.hudActive = true; state.touchSettings = false; ui.update();
+    return;
+  }
   if (typeof canvas.requestPointerLock !== 'function') {
     state.status = 'Pointer capture is unavailable in this browser.'; ui.update(); return;
   }
@@ -85,6 +93,26 @@ function lookAround() {
 }
 
 function enterFlight() { stopIntro(); lookAround(); }
+
+async function toggleGyro() {
+  if (state.gyroPending) return;
+  if (state.gyroActive) { gyro.disable(); state.gyroActive = false; }
+  else {
+    state.gyroPending = true;
+    state.gyroActive = await gyro.enable();
+    state.gyroPending = false;
+  }
+  state.gyroStatus = gyro.status(); ui.update();
+}
+
+function updateNavigation(dt: number) {
+  if (state.gyroActive && state.hudActive && !state.touchSettings && !state.screensaver) {
+    const delta = gyro.update(dt);
+    if (delta) navigation.rotateLook(delta);
+    state.gyroStatus = gyro.status();
+  } else gyro.recalibrate();
+  navigation.update(dt);
+}
 
 function startScreensaver() {
   if (!state.flowAvailable || !state.isCore) return;
@@ -111,7 +139,7 @@ const ui = createUI(container, state, {
     state.time = Math.max(state.timeMin, Math.min(state.timeMax, time));
     state.playing = false; reseed();
   },
-  enterFlight, lookAround, startScreensaver,
+  enterFlight, lookAround, startScreensaver, returnToAuto, toggleGyro,
 });
 
 const debug = { state, renderer, startup, sampleVelocity: (p: number[], time = state.time) => renderer ? sampleVelocity(renderer.field, p, time) : null };
@@ -194,14 +222,14 @@ function frame(now: number) {
     if (introAtEndpoint) shot.time = state.timeMax;
     const segment = shot.shot, restart = segment !== introSegment;
     timeDelta = restart ? 0 : Math.max(0, shot.time-state.time); transportDelta = timeDelta;
-    if (restart) { renderer.reseed(); navigation.resetIntroLook(); introSegment = segment; state.density = shot.density; }
+    if (restart) { renderer.reseed(); navigation.resetIntroLook(); gyro.recalibrate(); introSegment = segment; state.density = shot.density; }
     state.time = shot.time; state.playing = shot.time < state.timeMax;
     state.introShot = shot.shot; state.introProgress = shot.phase;
     state.introDuration = shot.duration;
     state.introTitle = shot.title; state.introCaption = shot.caption;
     state.introScaleRatio = Math.sqrt((1-shot.time)/(1-state.timeMin));
     state.introSpeedRatio = ((1-state.timeMin)/(1-shot.time))**(.5+renderer.field.manifest.model.h);
-    navigation.update(dt);
+    updateNavigation(dt);
     const pose = navigation.applyIntroPose({ position: shot.position, orientation: shot.orientation, scale: shot.scale });
     state.ship.position = pose.position; state.ship.orientation = pose.orientation; state.ship.scale = pose.scale;
     const optics = navigation.applyIntroOptics(shot);
@@ -211,7 +239,7 @@ function frame(now: number) {
     state.playbackSpeed = shot.playbackSpeed;
     canvas.style.opacity = String(shot.opacity);
   } else {
-    navigation.update(dt);
+    updateNavigation(dt);
     const nextTime = state.playing
     ? advanceTime(state.time, state.timeMax, clockElapsed, state.playbackSpeed, state.timeMode)
     : state.time;
@@ -259,7 +287,7 @@ const onManualInput = (event: Event) => {
   if (state.introActive && event.target instanceof Element && event.target.closest('input, select')) stopIntro(event.type !== 'input');
 };
 function returnToAuto() {
-  state.hudActive = false;
+  state.hudActive = false; state.touchSettings = false;
   if (!state.introActive && state.isCore) startIntro();
   else { navigation.resetIntroLook(); ui.update(); canvas.focus({ preventScroll: true }); }
 }
@@ -294,13 +322,30 @@ document.addEventListener('input', onManualInput, true);
 document.addEventListener('keydown', onIntroKey, true);
 document.addEventListener('pointerlockchange', onCaptureChange);
 document.addEventListener('fullscreenchange', onFullscreenChange);
+let suppressTouchClickUntil = 0;
+const onScreensaverTap = (event: PointerEvent) => {
+  if (state.touchControls && state.screensaver) {
+    event.preventDefault(); suppressTouchClickUntil = performance.now() + 500; stopScreensaver();
+  }
+};
+// The compatibility click from the exit tap must not hit the newly revealed
+// look button beneath the same finger.
+const onTouchClick = (event: MouseEvent) => {
+  if (performance.now() < suppressTouchClickUntil) {
+    suppressTouchClickUntil = 0; event.preventDefault(); event.stopImmediatePropagation();
+  }
+};
+canvas.addEventListener('pointerup', onScreensaverTap);
+document.addEventListener('click', onTouchClick, true);
 void start();
 
 if (import.meta.hot) import.meta.hot.dispose(() => {
-  disposed = true; cancelAnimationFrame(frameID); renderer?.dispose(); navigation.dispose(); ui.dispose();
+  disposed = true; cancelAnimationFrame(frameID); renderer?.dispose(); navigation.dispose(); gyro.dispose(); ui.dispose();
   canvas.removeEventListener('webglcontextlost', onContextLost); document.removeEventListener('visibilitychange', onVisibility);
   document.removeEventListener('pointerdown', onManualInput, true); document.removeEventListener('input', onManualInput, true);
   document.removeEventListener('keydown', onIntroKey, true);
   document.removeEventListener('pointerlockchange', onCaptureChange);
   document.removeEventListener('fullscreenchange', onFullscreenChange);
+  canvas.removeEventListener('pointerup', onScreensaverTap);
+  document.removeEventListener('click', onTouchClick, true);
 });

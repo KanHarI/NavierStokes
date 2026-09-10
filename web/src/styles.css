@@ -19,7 +19,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   outline: 2px solid var(--accent); outline-offset: 4px;
 }
 button:disabled { cursor: default; opacity: .4; }
-canvas { display: block; position: fixed; inset: 0; width: 100%; height: 100%; }
+canvas { display: block; position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; }
 .cockpit { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
 .cockpit.is-screensaver { visibility: hidden; }
 .cockpit button, .cockpit input, .cockpit select, .cockpit summary, .cockpit a, .control-panel { pointer-events: auto; }
@@ -263,5 +263,153 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
   .intro-measures { margin-top: 6px; font-size: 9px; }
   .intro-progress { margin: 15px 0; }
   .explore-button { padding: 10px 14px; }
+}
+
+/* Touch viewing keeps the fluid central and moves detailed controls into a sheet. */
+.radar-steering-hint { position: absolute; top: 0; left: 0; display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: rgba(0,0,0,.7); border: 1px solid #777; border-radius: 6px; }
+.radar-key { display: grid; place-items: center; width: 36px; height: 38px; border: 1px solid #ddd; border-bottom-width: 3px; border-radius: 5px; color: #fff; font: 18px ui-monospace, monospace; }
+.radar-steering-hint strong, .radar-steering-hint small { display: block; margin-left: 6px; }
+.radar-steering-hint strong { font-size: 12px; font-weight: 500; color: #fff; }
+.radar-steering-hint small { margin-top: 5px; font-size: 10px; color: #bbb; }
+@media (min-width: 761px) { .cockpit.is-hud .hud-instruments, .cockpit.is-hud .hud-controls { max-height: calc(100dvh - 135px); } }
+@media (max-width: 760px) {
+  .cockpit:not(.is-touch).is-hud .flight-hud { top: 126px; }
+  .cockpit:not(.is-touch) .radar-steering-hint { top: -65px; padding: 8px; }
+  .radar-steering-hint small { font-size: 9px; }
+}
+.is-touch .radar-steering-hint { display: none; }
+.touch-toolbar, .touch-hint, .touch-close { display: none; }
+.is-touch {
+  --accent: #e1e1e1;
+  --muted: #a0a0a0;
+  --line: rgba(255, 255, 255, .2);
+  --panel: rgba(9, 9, 9, .94);
+  --touch-left: max(16px, env(safe-area-inset-left));
+  --touch-right: max(16px, env(safe-area-inset-right));
+  --touch-top: max(16px, env(safe-area-inset-top));
+  --touch-bottom: max(14px, env(safe-area-inset-bottom));
+}
+.is-touch .quiet-button, .is-touch .explore-button,
+.is-touch .flight-prompt button, .is-touch .play-button {
+  min-height: 44px;
+  touch-action: manipulation;
+}
+.is-touch .quiet-button { color: #ddd; background: rgba(8, 8, 8, .75); }
+.is-touch .quiet-button:hover { background: rgba(36, 36, 36, .92); border-color: #888; }
+.is-touch .quiet-button[aria-pressed='true'] { border-color: #bbb; background: rgba(48, 48, 48, .94); }
+.is-touch .mission-header { top: var(--touch-top); left: var(--touch-left); right: var(--touch-right); }
+.is-touch .mission-header > div { background: rgba(0, 0, 0, .48); box-shadow: none; }
+.is-touch .scope-badge { color: #aaa; background: rgba(255, 255, 255, .03); border-color: var(--line); }
+.is-touch .interface-toggle, .is-touch.is-intro .interface-toggle {
+  top: auto; right: var(--touch-right); bottom: var(--touch-bottom);
+  min-width: 96px;
+}
+.is-touch .intro-card { left: var(--touch-left); bottom: calc(var(--touch-bottom) + 62px); width: min(430px, calc(100% - var(--touch-left) - var(--touch-right))); }
+.is-touch .intro-card::before { inset: -35px -30px -35px; background: radial-gradient(ellipse at 30% 65%, rgba(0, 0, 0, .85), transparent 78%); }
+.is-touch .intro-look-prompt .explore-button { min-height: 48px; padding: 14px 20px; background: rgba(0, 0, 0, .38); }
+.is-touch .hud-controls, .is-touch #hud-setting-groups { display: none; }
+.is-touch .flight-hud {
+  inset: var(--touch-top) var(--touch-right) auto var(--touch-left);
+  display: block;
+  pointer-events: none;
+}
+.is-touch .flight-hud[hidden] { display: none; }
+.is-touch .hud-instruments {
+  width: min(345px, 100%); max-height: none; padding: 12px 14px;
+  overflow: visible; pointer-events: none;
+  background: rgba(0, 0, 0, .55); border-color: rgba(255, 255, 255, .15);
+}
+.is-touch .hud-range-bar { margin: 11px 0 12px; }
+.is-touch .hud-gauges { gap: 10px; }
+.is-touch .hud-gauges dt { font-size: 9px; margin-bottom: 4px; }
+.is-touch .hud-gauges dd { font-size: 12px; }
+.is-touch.is-hud .interface-toggle { top: auto; bottom: calc(var(--touch-bottom) + 142px); }
+.is-touch.is-hud .touch-toolbar {
+  position: absolute; left: var(--touch-left); right: var(--touch-right); bottom: var(--touch-bottom);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
+}
+.is-touch.is-hud .touch-toolbar[hidden] { display: none; }
+.is-touch .touch-toolbar .quiet-button { flex: 1; max-width: 180px; padding: 10px 8px; font-size: 11px; white-space: nowrap; }
+.is-touch .touch-actions { display: flex; justify-content: center; gap: 8px; width: 100%; }
+.is-touch.is-hud .touch-hint {
+  display: block; flex-basis: 100%; margin: 0 0 2px; text-align: center;
+  color: #ddd; font-size: 10px; line-height: 1.5; letter-spacing: .2px;
+  text-shadow: 0 1px 5px #000, 0 0 12px #000;
+}
+.touch-hint strong, .touch-hint span { display: block; }
+.touch-hint strong { color: #fff; font-size: 12px; font-weight: 500; margin-bottom: 4px; }
+.touch-motion-status { flex-basis: 100%; margin: 0; text-align: center; font-size: 10px; line-height: 1.4; color: #ccc; text-shadow: 0 1px 5px #000; }
+.is-touch .control-panel {
+  top: auto; right: var(--touch-right); left: var(--touch-left); bottom: calc(var(--touch-bottom) + 60px);
+  width: auto; max-width: 440px; margin-left: auto;
+  max-height: min(56dvh, calc(100dvh - var(--touch-top) - var(--touch-bottom) - 150px));
+  border-radius: 16px 16px 8px 8px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  scrollbar-color: #777 transparent;
+}
+.cockpit.is-touch.is-hud.is-touch-settings .control-panel { display: block; bottom: calc(var(--touch-bottom) + 140px); opacity: 1; }
+.cockpit.is-touch.is-hud.is-touch-settings .control-panel[hidden] { display: none; }
+.is-touch.is-touch-settings .interface-toggle { display: none; }
+.is-touch .panel-top { position: sticky; top: 0; background: #111; z-index: 1; padding: 16px 18px; }
+.is-touch .panel-top h2 { font-size: 13px; }
+.is-touch .panel-top > span { display: none; }
+.is-touch .touch-close { display: inline-flex; align-items: center; justify-content: center; min-width: 54px; }
+.is-touch .control-section summary { min-height: 48px; align-items: center; padding: 14px 0; font-size: 12px; }
+.is-touch .control-caption, .is-touch .control-value { font-size: 11px; }
+.is-touch input[type='range'] { height: 32px; touch-action: pan-y; }
+.is-touch .control-row { margin-bottom: 16px; }
+.is-touch .select-row, .is-touch .check-row { min-height: 44px; font-size: 12px; }
+.is-touch .select-row select, .is-touch .header-actions select { min-height: 44px; font-size: 16px; background: #181818; }
+.is-touch .check-row input { width: 20px; height: 20px; flex-shrink: 0; }
+.is-touch .small-note { font-size: 11px; }
+.is-touch .panel-footer { padding-bottom: 16px; }
+.is-touch .timeline-bar { bottom: calc(var(--touch-bottom) + 58px); left: var(--touch-left); right: var(--touch-right); }
+.is-touch .telemetry { display: none; }
+.is-touch .help-card { max-height: calc(100dvh - 180px); overflow: auto; }
+
+@media (max-width: 600px) {
+  .is-touch .mission-header { flex-direction: column; gap: 12px; }
+  .is-touch .mission-header > div { padding: 0; margin: 0; background: transparent; }
+  .is-touch .eyebrow { font-size: 8px; margin-bottom: 4px; }
+  .is-touch .wordmark { font-size: 15px; }
+  .is-touch .scope-badge { max-width: 100%; font-size: 8px; padding: 3px 6px; margin-top: 6px; }
+  .is-touch .header-actions { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .is-touch .header-actions .quiet-button { padding: 10px 13px; font-size: 11px; }
+  .is-touch .intro-kicker { font-size: 8px; letter-spacing: 1.2px; gap: 4px 9px; }
+  .is-touch .intro-title { font-size: clamp(27px, 7.5vw, 36px); margin: 10px 0 8px; letter-spacing: -.8px; max-width: 350px; }
+  .is-touch .intro-description {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    overflow: hidden; font-size: 11px; line-height: 1.5;
+  }
+  .is-touch .intro-measures { font-size: 9px; gap: 3px 10px; margin-top: 8px; }
+  .is-touch .intro-progress { width: 140px; margin: 14px 0 0; }
+  .is-touch .intro-look-prompt { width: calc(100% - var(--touch-left) - var(--touch-right)); }
+  .is-touch .intro-look-prompt .explore-button { font-size: 12px; }
+  .is-touch .hud-instruments { width: 100%; }
+}
+@media (max-height: 600px) and (orientation: portrait) {
+  .is-touch .intro-card { bottom: calc(var(--touch-bottom) + 54px); }
+  .is-touch .intro-title { font-size: 25px; margin: 7px 0; }
+  .is-touch .intro-description, .is-touch .intro-measures { display: none; }
+  .is-touch .intro-progress { margin-top: 10px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .is-touch { --touch-top: max(12px, env(safe-area-inset-top)); --touch-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .is-touch .mission-header { flex-direction: row; align-items: flex-start; }
+  .is-touch .eyebrow, .is-touch .scope-badge { display: none; }
+  .is-touch .mission-header > div { margin: 0; padding: 10px 0; }
+  .is-touch .header-actions { flex-direction: row; flex-wrap: nowrap; }
+  .is-touch .intro-card { bottom: var(--touch-bottom); width: min(430px, calc(100% - 160px)); }
+  .is-touch .intro-title { font-size: 25px; margin: 6px 0; }
+  .is-touch .intro-description, .is-touch .intro-measures { display: none; }
+  .is-touch .intro-progress { margin: 10px 0 0; width: 120px; }
+  .is-touch .hud-instruments { width: 280px; padding: 10px 12px; }
+  .is-touch .hud-heading { font-size: 8px; }
+  .is-touch .hud-range-bar { margin: 9px 0; }
+  .is-touch .hud-gauges dd { font-size: 11px; }
+  .is-touch.is-hud .interface-toggle { top: var(--touch-top); bottom: auto; }
+  .is-touch.is-hud .touch-toolbar { left: auto; width: min(360px, calc(100% - var(--touch-left) - var(--touch-right))); }
+  .is-touch .control-panel, .cockpit.is-touch.is-hud.is-touch-settings .control-panel {
+    max-width: 360px; max-height: calc(100dvh - var(--touch-top) - var(--touch-bottom) - 160px);
+  }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
