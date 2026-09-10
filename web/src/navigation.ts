@@ -45,7 +45,7 @@ export function createNavigation(canvas: HTMLCanvasElement, state: AppState) {
   let introLook: Quat = [0, 0, 0, 1];
   let introOffset: Vec3 = [0, 0, 0];
   let introOptics = neutralOptics();
-  const flightKeys = new Set(['KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyR', 'KeyF',
+  const flightKeys = new Set(['KeyW', 'KeyS', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown',
     'KeyQ', 'KeyE', 'KeyZ', 'KeyX', 'ShiftLeft', 'ShiftRight',
     'Minus', 'Equal', 'BracketLeft', 'BracketRight', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6']);
   state.ship.orientation = normalize(state.ship.orientation);
@@ -134,7 +134,7 @@ export function createNavigation(canvas: HTMLCanvasElement, state: AppState) {
         if (state.introActive) introLook = orientation;
         else state.ship.orientation = orientation;
       }
-      const local: Vec3 = [axis('KeyD', 'KeyA'), axis('KeyR', 'KeyF'), axis('KeyS', 'KeyW')];
+      const local: Vec3 = [axis('KeyD', 'KeyA'), axis('ArrowUp', 'ArrowDown'), axis('KeyS', 'KeyW')];
       const norm = Math.hypot(...local);
       if (!norm) return;
       const boost = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 4 : 1;

@@ -59,7 +59,7 @@ extra light when velocity rises nor draws artificial radial bursts.
 
 Exposure is choreographed only during the introduction. **Click to look
 around** captures the mouse and composes a relative look rotation with the
-generated camera. WASD translates, R/F moves up/down, Q/E rolls, and Z/X
+generated camera. WASD translates, ↑/↓ moves up/down, Q/E rolls, and Z/X
 changes radar range without changing the camera or movement scale; generated motion, optics, and
 physical time continue. Additional keys adjust ISO (−/+), field of view ([/]), shell depth (1/2),
 focus (3/4), and bokeh (5/6). Every new clip clears the user position,

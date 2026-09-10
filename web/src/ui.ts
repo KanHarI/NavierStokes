@@ -36,7 +36,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
       <dl class="key-list">
         <dt>Mouse</dt><dd>Look in any direction</dd>
         <dt>W A S D</dt><dd>Forward, back, sideways</dd>
-        <dt>R / F</dt><dd>Local up / down</dd>
+        <dt>↑ / ↓</dt><dd>Local up / down</dd>
         <dt>Q / E</dt><dd>Roll left / right</dd>
         <dt>Z / X</dt><dd>Radar range nearer / farther</dd>
         <dt>Shift</dt><dd>Travel faster</dd>
@@ -80,7 +80,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
         <div class="hud-control-heading">TRY THE CONTROLS <span id="hud-mode"></span></div>
         <dl class="hud-key-list">
           <div><dt>Mouse</dt><dd>Look</dd></div><div><dt>W A S D</dt><dd></dd></div>
-          <div><dt>R / F</dt><dd>Up / down</dd></div><div><dt>Q / E</dt><dd>Roll</dd></div>
+          <div><dt>↑ / ↓</dt><dd>Up / down</dd></div><div><dt>Q / E</dt><dd>Roll</dd></div>
           <div><dt>Z / X</dt><dd>Radar range</dd></div><div><dt>Shift</dt><dd>Move faster</dd></div>
           <div><dt>− / +</dt><dd>Brightness</dd></div><div><dt>[ / ]</dt><dd>View width</dd></div>
           <div><dt>1 / 2</dt><dd>Shell thickness</dd></div><div><dt>3 / 4</dt><dd>Focus distance</dd></div>

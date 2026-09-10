@@ -192,7 +192,7 @@ test('movie travel follows the camera, normalizes diagonal movement, and scales 
     const diagonal = navigation.applyIntroPose(base);
     const enlarged = navigation.applyIntroPose({ ...base, scale: 4 });
     navigation.resetIntroLook();
-    key('KeyR'); navigation.update(.1);
+    key('ArrowUp'); navigation.update(.1);
     const vertical = navigation.applyIntroPose(base);
     navigation.dispose();
     return { forward, diagonal, enlarged, vertical, radarTravel, radar };
