@@ -96,9 +96,12 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     </section>
     <div class="touch-toolbar" hidden>
       <p class="touch-hint"><strong>Pinch to change radar distance</strong><span>Drag to look</span></p>
+      <p class="touch-motion-status" id="touch-motion-status" role="status" hidden></p>
       <div class="touch-actions">
         <button class="quiet-button" id="touch-auto" aria-label="Return to auto">Auto</button>
         <button class="quiet-button" id="touch-manual">Take control</button>
+        <!-- Temporarily unavailable after reported phone crashes; keep integration for future testing. -->
+        <button hidden class="quiet-button" id="touch-gyro" aria-label="Gyro steering" aria-pressed="false">Gyro</button>
         <button class="quiet-button" id="touch-settings" aria-expanded="false" aria-controls="flight-controls">Settings</button>
       </div>
     </div>
@@ -313,6 +316,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
   on(replayIntro, 'click', () => actions.startIntro());
   on(find('#screensaver'), 'click', () => actions.startScreensaver());
   on(find('#touch-auto'), 'click', () => actions.returnToAuto());
+  on(find('#touch-gyro'), 'click', () => actions.toggleGyro());
   on(find('#touch-manual'), 'click', () => {
     if (state.introActive) actions.enterFlight();
     else if (hasFlow()) state.playing = !state.playing;
@@ -342,6 +346,11 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
       find('.touch-toolbar').hidden = !state.touchControls || !state.hudActive;
       find('#touch-manual').textContent = state.introActive ? 'Take control' : state.playing ? 'Pause' : 'Play';
       find('#touch-settings').setAttribute('aria-expanded', String(state.touchSettings));
+      find('#touch-gyro').setAttribute('aria-pressed', String(state.gyroActive));
+      find<HTMLButtonElement>('#touch-gyro').disabled = state.gyroPending;
+      find('#touch-gyro').textContent = state.gyroPending ? 'Allow…' : state.gyroActive ? 'Gyro on' : 'Gyro';
+      find('#touch-motion-status').textContent = state.gyroStatus;
+      find('#touch-motion-status').hidden = !state.gyroStatus;
       find('#explore-flow').innerHTML = `${state.touchControls ? 'Tap to look around' : 'Click to look around'} <span aria-hidden="true">↗</span>`;
       find('#enter-flight').textContent = state.touchControls ? 'Touch to explore' : 'Click to fly ↗';
       find<HTMLButtonElement>('#screensaver').disabled = !hasFlow() || !state.isCore;

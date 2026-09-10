@@ -25,7 +25,7 @@ test('real touch gestures steer the movie, adjust radar, and expose complete man
     return s.touchControls && s.hudActive && s.introActive && !s.pointerLocked && !document.pointerLockElement;
   });
   await expect(page.locator('.touch-toolbar')).toBeVisible();
-  await expect(page.locator('#touch-gyro')).toHaveCount(0);
+  await expect(page.locator('#touch-gyro')).toBeHidden();
   await expect(page.locator('.touch-hint')).toContainText('Drag to look');
   const session = await page.context().newCDPSession(page);
   const before = await page.evaluate(() => {

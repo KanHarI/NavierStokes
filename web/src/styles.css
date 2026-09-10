@@ -339,6 +339,7 @@ input[type='range'] { display: block; width: 100%; height: 12px; margin: 0; acce
 }
 .touch-hint strong, .touch-hint span { display: block; }
 .touch-hint strong { color: #fff; font-size: 12px; font-weight: 500; margin-bottom: 4px; }
+.touch-motion-status { flex-basis: 100%; margin: 0; text-align: center; font-size: 10px; line-height: 1.4; color: #ccc; text-shadow: 0 1px 5px #000; }
 .is-touch .control-panel {
   top: auto; right: var(--touch-right); left: var(--touch-left); bottom: calc(var(--touch-bottom) + 60px);
   width: auto; max-width: 440px; margin-left: auto;
