@@ -46,7 +46,7 @@ export function createGyroSteering() {
   let pending: Promise<boolean> | null = null;
   let target: Quat | null = null, filtered: Quat | null = null;
   let lastSample: number | null = null, waitingSince = 0, angle = screenAngle();
-  let invalidReading = false, message = 'Motion steering is off.';
+  let invalidReading = false, message = 'Gyro steering is off.';
   const staleAfter = 1500;
 
   function recalibrate() {
@@ -73,28 +73,28 @@ export function createGyroSteering() {
     document.removeEventListener('visibilitychange', onVisibility);
   }
   function disable() {
-    generation++; enabled = false; detach(); recalibrate(); message = 'Motion steering is off.';
+    generation++; enabled = false; detach(); recalibrate(); message = 'Gyro steering is off.';
   }
   function enable(): Promise<boolean> {
     if (disposed) return Promise.resolve(false);
     if (enabled) return Promise.resolve(true);
     if (pending) return pending;
     if (!window.isSecureContext || typeof window.DeviceOrientationEvent === 'undefined') {
-      message = 'Motion sensors are unavailable here. Drag to look around.';
+      message = 'Gyro sensors are unavailable here. Drag to look around.';
       return Promise.resolve(false);
     }
     const token = ++generation;
     const Sensor = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {
       requestPermission?: () => Promise<PermissionState>;
     };
-    message = 'Requesting motion access…';
+    message = 'Requesting gyro access…';
     pending = (async () => {
       try {
         // Do not precede this with an await: iOS requires the tap activation.
         const permission = Sensor.requestPermission ? await Sensor.requestPermission.call(Sensor) : 'granted';
         if (token !== generation || disposed) return false;
         if (permission !== 'granted') {
-          message = 'Motion access was denied. Drag to look around.'; return false;
+          message = 'Gyro access was denied. Drag to look around.'; return false;
         }
         enabled = true; recalibrate();
         window.addEventListener('deviceorientation', onReading);
@@ -103,7 +103,7 @@ export function createGyroSteering() {
         document.addEventListener('visibilitychange', onVisibility);
         return true;
       } catch {
-        if (token === generation) message = 'Motion access is unavailable. Drag to look around.';
+        if (token === generation) message = 'Gyro access is unavailable. Drag to look around.';
         return false;
       }
     })();
@@ -124,11 +124,11 @@ export function createGyroSteering() {
     },
     status() {
       if (!enabled) return message;
-      if (invalidReading) return 'Motion data unavailable. Drag to look around.';
+      if (invalidReading) return 'Gyro data unavailable. Drag to look around.';
       if (!target) return performance.now() - waitingSince > 2500
-        ? 'No motion data received. Drag to look around.' : 'Waiting for motion data…';
-      if (lastSample === null || performance.now() - lastSample > staleAfter) return 'Motion data paused. Drag to look around.';
-      return 'Motion steering on.';
+        ? 'No gyro data received. Drag to look around.' : 'Waiting for gyro data…';
+      if (lastSample === null || performance.now() - lastSample > staleAfter) return 'Gyro data paused. Drag to look around.';
+      return 'Gyro steering on.';
     },
     dispose() { disable(); disposed = true; },
   };

@@ -4,6 +4,7 @@ import { EXTENDED_GLSL } from './extended-glsl';
 import { INFLOW_GLSL } from './inflow-glsl';
 import { SHELL_GLSL, shellBounds } from './shell';
 import { planTransport, type TransportPlan } from './transport';
+import { PARTICLE_PROFILE_GLSL } from './particle-profile';
 
 const MAX_PARTICLES = 120_000;
 // On phones, the same angular samples are concentrated into fewer pixels.
@@ -174,13 +175,14 @@ precision highp float;
 layout(location=0) in vec4 aParticle;
 ${fieldGLSL}
 uniform vec4 uOrientation;
+${PARTICLE_PROFILE_GLSL}
 uniform vec2 uResolution,uShell;
 uniform float uFocus,uBlur,uFov,uExposure,uBrightness,uColorMax,uShutter;
 uniform int uColor,uSaturation;
 out vec2 vOffset;
 out vec3 vColor;
 out vec2 vSigma;
-out float vLight;
+out vec3 vProfile;
 vec3 rotate(vec4 q,vec3 v){return v+2.*cross(q.xyz,cross(q.xyz,v)+q.w*v);}
 void main(){
   vec2 corners[6]=vec2[6](vec2(-1,-1),vec2(1,-1),vec2(-1,1),vec2(-1,1),vec2(1,-1),vec2(1,1));
@@ -205,21 +207,29 @@ void main(){
   float traceLength=min(length(motion),36.);
   vec2 direction=length(motion)>.00001?normalize(motion):vec2(1.,0.);
   vSigma=vec2(sqrt(sigma*sigma+traceLength*traceLength/12.),sigma);
-  vOffset=corner*3.*vSigma;
-  vec2 pixelOffset=direction*vOffset.x+vec2(-direction.y,direction.x)*vOffset.y;
-  gl_Position=vec4(ndc+pixelOffset*2./uResolution,0.,1.);
   float visibility=shell.x*fieldVisibility(aParticle.xyz);
   float ageFade=smoothstep(0.,.35,aParticle.w);
   // Uniform solid angle projects to cos(theta)^3 samples per pixel area.
   // Convert each angular tracer's light to the image-area measure BEFORE
   // Gaussian normalization. This keeps uniform angular dust exposure uniform.
-  // Cull the complete footprint first: grazing, offscreen rays must not create
-  // unbounded weights. The viewport plus its Gaussian guard band bounds gain.
+  // A finite guard includes swollen spots without admitting grazing rays
+  // with unbounded projection weights. The final footprint is culled below.
+  const float maximumRadius=256.;
   bool visible=camera.z<-.001&&aParticle.w>=0.&&visibility>0.
-    &&all(lessThanEqual(abs(ndc),vec2(1.)+6.*length(vSigma)/uResolution));
+    &&all(lessThanEqual(abs(ndc),vec2(1.)+2.*maximumRadius*1.415/uResolution));
   float imageAreaWeight=visible?pow(d/max(-camera.z,.001),3.):0.;
-  vLight=12.*uBrightness*exp2(uExposure)*visibility*ageFade*imageAreaWeight;
-  if(!visible){vLight=0.;gl_Position=vec4(2.,2.,0.,1.);}
+  float light=12.*uBrightness*exp2(uExposure)*visibility*ageFade*imageAreaWeight;
+  vProfile=particleProfileParameters(light,vSigma);
+  float support=sqrt(2.*vProfile.z);
+  // Extreme exposures have a bounded raster footprint; any light that cannot
+  // fit below white here remains HDR for the overlap-redistribution pass.
+  float bounded=min(1.,maximumRadius/(support*max(vSigma.x,vSigma.y)));
+  vSigma*=bounded; vProfile.x/=bounded*bounded;
+  vOffset=corner*support*vSigma;
+  vec2 pixelOffset=direction*vOffset.x+vec2(-direction.y,direction.x)*vOffset.y;
+  vec2 extent=support*(abs(direction)*vSigma.x+abs(vec2(-direction.y,direction.x))*vSigma.y);
+  visible=visible&&all(lessThanEqual(abs(ndc),vec2(1.)+2.*extent/uResolution));
+  gl_Position=visible?vec4(ndc+pixelOffset*2./uResolution,0.,1.):vec4(2.,2.,0.,1.);
   vColor=vec3(1.);
   if(uColor==1){
     float speed=length(velocity(aParticle.xyz));float f=clamp(log(1.+speed)/log(1.+uColorMax),0.,1.);
@@ -227,12 +237,31 @@ void main(){
     if(uSaturation==1)vColor=mix(vec3(dot(vColor,${LUMA})),vColor,1.-clamp((d-uShell.x)/(uShell.y-uShell.x),0.,1.));
     vColor/=max(dot(vColor,${LUMA}),.001);
   }
+  if(vProfile.y>0.)vColor=vec3(1.);
 }`;
 const drawFragment = `#version 300 es
 precision highp float;
-in vec2 vOffset;in vec3 vColor;in vec2 vSigma;in float vLight;out vec4 color;
-void main(){vec2 normalized=vOffset/vSigma;float r2=dot(normalized,normalized);if(r2>9.)discard;
-  float I=vLight*exp(-.5*r2)/(6.28318530718*vSigma.x*vSigma.y*(1.-exp(-4.5)));
+${PARTICLE_PROFILE_GLSL}
+in vec2 vOffset;in vec3 vColor;in vec2 vSigma;in vec3 vProfile;out vec4 color;
+float intensity(vec2 offset){vec2 p=offset/vSigma;return particleProfileIntensity(.5*dot(p,p),vProfile);}
+void main(){
+  float I;
+  if(vProfile.y>0.){
+    // Integrate the white ellipse edge over each pixel to avoid jagged small
+    // plateaus and keep the discrete brightness integral close to its target.
+    vec2 dx=dFdx(vOffset),dy=dFdy(vOffset);
+    float radius=length(vOffset/vSigma);
+    float pixelRadius=length((abs(dx)+abs(dy))*.5/vSigma);
+    if(radius+pixelRadius<=sqrt(2.*vProfile.y)) I=vProfile.x;
+    else {
+      I=0.;
+      for(int y=0;y<4;y++)for(int x=0;x<4;x++){
+        I+=intensity(vOffset+dx*((float(x)+.5)/4.-.5)+dy*((float(y)+.5)/4.-.5));
+      }
+      I/=16.;
+    }
+  }else I=intensity(vOffset);
+  if(I<=0.)discard;
   color=vec4(vColor*I,0.);
 }`;
 // Extract overflow once, then run a linear multiscale convolution. Thresholding
@@ -291,6 +320,7 @@ export class Renderer {
   private reductions: Target[] = [];
   private index = 0;
   private count = 0;
+  private capacity: number;
   private seed = 1;
   private resetPending = true;
   private previousScale = 1;
@@ -304,6 +334,7 @@ export class Renderer {
   private resizeObserver: ResizeObserver;
 
   constructor(private canvas: HTMLCanvasElement, private state: AppState, readonly field: FieldData) {
+    this.capacity = state.touchControls ? 24_000 : MAX_PARTICLES;
     this.previousPosition = [...state.ship.position];
     const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, preserveDrawingBuffer: false });
     if (!gl) throw new Error('WebGL 2 is unavailable. Please use a browser with hardware acceleration enabled.');
@@ -316,8 +347,8 @@ export class Renderer {
     this.reduceProgram = this.program(fullscreen, reduceFragment);
     this.emptyVAO = gl.createVertexArray()!;
     this.feedback = gl.createTransformFeedback()!;
-    const initial = new Float32Array(MAX_PARTICLES * 4);
-    for (let i = 0; i < MAX_PARTICLES; i++) initial[i * 4 + 3] = -1;
+    const initial = new Float32Array(this.capacity * 4);
+    for (let i = 0; i < this.capacity; i++) initial[i * 4 + 3] = -1;
     for (let i = 0; i < 2; i++) {
       const buffer = gl.createBuffer()!; this.particleBuffers.push(buffer);
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferData(gl.ARRAY_BUFFER, initial, gl.DYNAMIC_COPY);
@@ -391,13 +422,14 @@ export class Renderer {
   }
   private destroyTarget(target: Target) { this.gl.deleteTexture(target.texture); this.gl.deleteFramebuffer(target.framebuffer); }
   private resize() {
-    const ratio = Math.min(window.devicePixelRatio || 1, 1.5) * this.state.renderScale;
+    let ratio = Math.min(window.devicePixelRatio || 1, 1.5) * this.state.renderScale;
+    if (this.state.touchControls) ratio = Math.min(ratio, Math.sqrt(450_000 / Math.max(1, this.canvas.clientWidth * this.canvas.clientHeight)));
     const w = Math.max(2, Math.round(this.canvas.clientWidth * ratio));
     const h = Math.max(2, Math.round(this.canvas.clientHeight * ratio));
     if (this.canvas.width === w && this.canvas.height === h && this.targets.length) return;
     this.canvas.width = w; this.canvas.height = h;
     [...this.targets, ...this.reductions].forEach(t => this.destroyTarget(t));
-    this.targets = Array.from({ length: 4 }, () => this.target(w, h));
+    this.targets = Array.from({ length: 5 }, () => this.target(w, h));
     this.reductions = []; let x = w; let y = h;
     while (x > 1 || y > 1) { x = Math.ceil(x / 2); y = Math.ceil(y / 2); this.reductions.push(this.target(x, y, true)); }
     this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
@@ -428,8 +460,9 @@ export class Renderer {
     const bounds = shellBounds({ near: s.near, far: s.far, transitionWidth: s.shellFade });
     const shellVolume = 4 * Math.PI / 3 * (bounds.guard[1] ** 3 - bounds.guard[0] ** 3);
     const previousCount = this.count;
-    const desired = Math.min(MAX_PARTICLES, Math.max(100, Math.round(s.density * shellVolume)));
-    const change = Math.max(1, Math.ceil(MAX_PARTICLES * wallDelta));
+    const requested = Math.min(MAX_PARTICLES, Math.max(100, Math.round(s.density * shellVolume)));
+    const desired = Math.min(this.capacity, requested);
+    const change = Math.max(1, Math.ceil(this.capacity * wallDelta));
     this.count = this.count === 0 ? desired : this.count + Math.max(-change, Math.min(change, desired - this.count));
     s.particleCount = this.count;
     if (s.ship.scale / this.previousScale > 1.3 || s.ship.scale / this.previousScale < .77) this.resetPending = true;
@@ -470,6 +503,7 @@ export class Renderer {
     this.f(this.drawProgram, 'uFocus', s.focus); this.f(this.drawProgram, 'uBlur', s.blur);
     this.f(this.drawProgram, 'uFov', s.fov * Math.PI / 180); this.f(this.drawProgram, 'uExposure', s.exposure);
     this.f(this.drawProgram, 'uBrightness', (s.touchControls ? imageExposureScale(this.canvas.width, s.fov) : 1)
+      * Math.max(1, requested / this.capacity)
       * (s.densityCompensation ? 500 / Math.max(1, s.density) : 1));
     this.f(this.drawProgram, 'uColorMax', s.maxSpeed); this.i(this.drawProgram, 'uColor', s.colorMode === 'speed' ? 1 : 0);
     const shutter = s.introActive && transportDelta > 0
@@ -494,20 +528,28 @@ export class Renderer {
   private redistribute(input: Target): Target {
     const gl = this.gl; const p = this.spreadProgram; gl.useProgram(p.program);
     gl.viewport(0, 0, input.width, input.height);
-    this.texture(p, 'uOriginal', input.texture, 2);
     let current = input;
-    for (const stride of [1, 2, 4, 8, 16]) {
-      const output = current === this.targets[2] ? this.targets[3] : this.targets[2];
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this.targets[1].framebuffer);
-      this.texture(p, 'uInput', current.texture, 0);
-      // Both samplers must avoid the render attachment, even when a branch does not sample one.
-      this.texture(p, 'uHorizontal', current.texture, 1);
-      this.i(p, 'uExtract', stride === 1 ? 1 : 0); this.i(p, 'uComposite', 0);
-      this.i(p, 'uStride', stride); this.i(p, 'uPass', 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, output.framebuffer);
-      this.texture(p, 'uHorizontal', this.targets[1].texture, 1); this.i(p, 'uPass', 1);
-      this.i(p, 'uComposite', stride === 16 ? 1 : 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
-      current = output;
+    // Most overflow settles near its source. Only the remaining excess moves
+    // to the wider kernel; every group remains linear internally, avoiding
+    // sparse grid peaks while keeping saturated regions compact.
+    for (const scales of [[1, 2, 4], [1, 2, 4], [1, 2, 4, 8]]) {
+      const original = current;
+      const first = original === this.targets[2] ? this.targets[3] : this.targets[2];
+      const second = original === this.targets[4] ? this.targets[3] : this.targets[4];
+      this.texture(p, 'uOriginal', original.texture, 2);
+      for (const stride of scales) {
+        const output = current === first ? second : first;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.targets[1].framebuffer);
+        this.texture(p, 'uInput', current.texture, 0);
+        // Both samplers must avoid the render attachment, even when a branch does not sample one.
+        this.texture(p, 'uHorizontal', current.texture, 1);
+        this.i(p, 'uExtract', stride === 1 ? 1 : 0); this.i(p, 'uComposite', 0);
+        this.i(p, 'uStride', stride); this.i(p, 'uPass', 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, output.framebuffer);
+        this.texture(p, 'uHorizontal', this.targets[1].texture, 1); this.i(p, 'uPass', 1);
+        this.i(p, 'uComposite', stride === scales[scales.length-1] ? 1 : 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
+        current = output;
+      }
     }
     return current;
   }
@@ -607,7 +649,7 @@ export class Renderer {
     const gl = this.gl;
     const savedTargets = this.targets; const savedReductions = this.reductions;
     const size = halo ? 256 : 64;
-    this.targets = Array.from({ length: 4 }, () => this.target(size, size));
+    this.targets = Array.from({ length: 5 }, () => this.target(size, size));
     this.reductions = (halo ? [128, 64, 32, 16, 8, 4, 2, 1] : [32, 16, 8, 4, 2, 1]).map(n => this.target(n, n, true));
     const cases: { name: string; input: number; output: number; overflow: number; relativeError: number; row?: number[]; pixels?: number[] }[] = [];
     try {
@@ -649,13 +691,13 @@ export class Renderer {
   }
 
   /** Verify the rendered Gaussian footprint, not just its analytic formula. */
-  auditGaussian(shutter = 0, useCurrentOptics = false) {
+  auditGaussian(shutter = 0, useCurrentOptics = false, exposure = 0) {
     const gl = this.gl; const savedReductions = this.reductions;
-    const size = useCurrentOptics ? 256 : 64;
+    const size = useCurrentOptics || exposure > 0 ? 256 : 64;
     const target = this.target(size, size);
-    this.reductions = (useCurrentOptics ? [128, 64, 32, 16, 8, 4, 2, 1] : [32, 16, 8, 4, 2, 1]).map(n => this.target(n, n, true));
+    this.reductions = (size === 256 ? [128, 64, 32, 16, 8, 4, 2, 1] : [32, 16, 8, 4, 2, 1]).map(n => this.target(n, n, true));
     const buffer = gl.createBuffer()!; const vao = gl.createVertexArray()!;
-    const cases: { distance: number; light: number; rmsRadius: number }[] = [];
+    const cases: { distance: number; light: number; rmsRadius: number; peak: number; whitePixels: number; xVariance: number; yVariance: number }[] = [];
     try {
       gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 16, 0); gl.vertexAttribDivisor(0, 1);
@@ -669,19 +711,22 @@ export class Renderer {
         if (!useCurrentOptics) gl.uniform2f(this.uniform(p, 'uOpticalShell'), 1, 3);
         this.f(p, 'uScale', 1); this.f(p, 'uFocus', useCurrentOptics ? this.state.focus : 2);
         this.f(p, 'uBlur', useCurrentOptics ? this.state.blur : 8); this.f(p, 'uFov', 1);
-        this.f(p, 'uExposure', 0); this.f(p, 'uBrightness', 1); this.i(p, 'uColor', 0);
+        this.f(p, 'uExposure', exposure); this.f(p, 'uBrightness', 1); this.i(p, 'uColor', 0);
         this.f(p, 'uShutter', shutter);
         gl.disable(gl.BLEND); gl.bindVertexArray(vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 1);
         const pixels = new Float32Array(size * size * 4);
         gl.readPixels(0, 0, size, size, gl.RGBA, gl.FLOAT, pixels);
-        let energy = 0, moment = 0;
+        let energy = 0, moment = 0, xMoment = 0, yMoment = 0, peak = 0, whitePixels = 0;
         for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
           const light = pixels[(y * size + x) * 4];
           energy += light; moment += light * ((x + .5 - size / 2) ** 2 + (y + .5 - size / 2) ** 2);
+          xMoment += light * (x + .5 - size / 2) ** 2; yMoment += light * (y + .5 - size / 2) ** 2;
+          peak = Math.max(peak, light); if (light >= .999) whitePixels++;
         }
-        cases.push({ distance, light: this.measure(target)[0], rmsRadius: Math.sqrt(moment / energy) });
+        cases.push({ distance, light: this.measure(target)[0], rmsRadius: Math.sqrt(moment / energy), peak, whitePixels,
+          xVariance: xMoment / energy, yVariance: yMoment / energy });
       }
-      return { cases, expectedLight: 12, glError: gl.getError() };
+      return { cases, expectedLight: 12 * 2 ** exposure, glError: gl.getError() };
     } finally {
       gl.deleteBuffer(buffer); gl.deleteVertexArray(vao); this.destroyTarget(target);
       this.reductions.forEach(t => this.destroyTarget(t)); this.reductions = savedReductions;

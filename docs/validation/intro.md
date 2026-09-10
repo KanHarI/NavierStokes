@@ -8,9 +8,11 @@ reproducible for testing; there is no fixed set of movies or four-view cycle.
 The previous progressively slower repeats have been replaced by bounded
 random durations.
 
-The first clip starts at the dataset's initial time. Later clips draw a
-continuous magnification between the full interval and its last thousandth.
-Their captions identify the actual starting and ending times. Each has a
+Every clip, including the first, flips a fair coin between a uniform
+physical-time start and uniform logarithmic sampling of the remaining time
+over zero to three decades. Starts stay strictly inside the finite playable
+interval, leaving time to advance before the endpoint. Their captions
+identify the actual starting and ending times. Each has a
 0.35-second fade-in, linear physical-time progression for duration minus
 0.70 seconds, and a 0.35-second fade-out of the final rendered image. Every
 clip reaches t=0.9999 before restarting. The renderer completes its initial

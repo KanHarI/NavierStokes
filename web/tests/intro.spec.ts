@@ -271,6 +271,42 @@ test('generated clips are seeded, diverse, and optically well formed', async ({ 
   }
 });
 
+test('first and later clips independently mix uniform physical time and logarithmic remaining time', async ({ page }) => {
+  await moduleHost(page);
+  const report = await page.evaluate(async () => {
+    const { generateIntroClip, sampleIntroClip } = await import('/src/intro.ts');
+    return [0, 7].map(index => {
+      const uniform: number[] = [], logarithmic: number[] = [];
+      let minimum = Infinity, shortest = Infinity;
+      for (let seed = 0; seed < 2000; seed++) {
+        const config = generateIntroClip(seed, index), sample = sampleIntroClip(config, 0);
+        minimum = Math.min(minimum, sample.startTime);
+        shortest = Math.min(shortest, .9999 - sample.startTime);
+        if (config.startDistribution === 'uniform') uniform.push(sample.startTime / .9998);
+        else logarithmic.push(-Math.log10(1 - sample.startTime) / 3);
+      }
+      const summary = (values: number[]) => ({ count: values.length,
+        mean: values.reduce((sum, value) => sum + value, 0) / values.length,
+        bins: Array.from({ length: 10 }, (_, bin) => values.filter(value => Math.floor(value * 10) === bin).length),
+      });
+      return { index, minimum, shortest, uniform: summary(uniform), logarithmic: summary(logarithmic) };
+    });
+  });
+  for (const clips of report) {
+    expect(clips.minimum).toBeGreaterThan(0);
+    expect(clips.shortest).toBeGreaterThanOrEqual(.0001 - 1e-12);
+    for (const distribution of [clips.uniform, clips.logarithmic]) {
+      expect(distribution.count).toBeGreaterThan(850);
+      expect(distribution.count).toBeLessThan(1150);
+      expect(Math.abs(distribution.mean - .5)).toBeLessThan(.035);
+      for (const count of distribution.bins) {
+        expect(count).toBeGreaterThan(distribution.count * .055);
+        expect(count).toBeLessThan(distribution.count * .145);
+      }
+    }
+  }
+});
+
 test('every generated clip advances physical time linearly and resets only at black', async ({ page }) => {
   await moduleHost(page);
   const report = await page.evaluate(async () => {
@@ -292,9 +328,8 @@ test('every generated clip advances physical time linearly and resets only at bl
   for (const clip of report) {
     const { begin, first, middle, last, endpoint, fading, beforeNext, next } = clip;
     expect(begin.shot).toBe(clip.index);
-    expect(begin.startTime).toBeGreaterThanOrEqual(.2);
+    expect(begin.startTime).toBeGreaterThan(.2);
     expect(begin.startTime).toBeLessThan(.9999);
-    if (clip.index === 0) expect(begin.startTime).toBe(.2);
     expect(begin.time).toBeCloseTo(begin.startTime, 10);
     expect(first.time).toBeGreaterThan(begin.startTime);
     expect(last.time-middle.time).toBeCloseTo(middle.time-first.time, 10);

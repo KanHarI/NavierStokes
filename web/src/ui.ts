@@ -16,6 +16,9 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
         <span class="scope-badge" id="model-label"></span>
       </div>
       <nav class="header-actions" aria-label="Viewer tools">
+        <a class="quiet-button github-link" href="https://github.com/KanHarI/NavierStokes" target="_blank" rel="noopener noreferrer" aria-label="View source on GitHub" title="View source on GitHub">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.438 9.8 8.205 11.385.6.11.82-.26.82-.577 0-.285-.01-1.04-.015-2.04-3.338.725-4.043-1.61-4.043-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.73.083-.73 1.205.085 1.838 1.237 1.838 1.237 1.07 1.835 2.807 1.305 3.492.998.108-.776.418-1.305.76-1.605-2.665-.3-5.467-1.335-5.467-5.93 0-1.31.468-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23A11.5 11.5 0 0 1 12 6.3c1.02.005 2.045.138 3.005.405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.295 24 17.795 24 12.5c0-6.63-5.37-12-12-12Z"/></svg>
+        </a>
         <button class="quiet-button" id="screensaver">Screensaver</button>
         <button class="quiet-button" id="replay-intro">Replay sequence</button>
         <select id="field-select" aria-label="Scientific field"><option value="extended">Core & surroundings</option><option value="core">Isolated core</option><option value="exterior">Heat exterior</option></select>
@@ -92,12 +95,12 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
       </div>
     </section>
     <div class="touch-toolbar" hidden>
-      <p class="touch-hint"><strong>Pinch to change radar distance</strong><span>Drag to look · or enable motion steering</span></p>
+      <p class="touch-hint"><strong>Pinch to change radar distance</strong><span>Drag to look · or enable gyro steering</span></p>
       <p class="touch-motion-status" id="touch-motion-status" role="status" hidden></p>
       <div class="touch-actions">
         <button class="quiet-button" id="touch-auto" aria-label="Return to auto">Auto</button>
         <button class="quiet-button" id="touch-manual">Take control</button>
-        <button class="quiet-button" id="touch-gyro" aria-label="Motion steering" aria-pressed="false">Motion</button>
+        <button class="quiet-button" id="touch-gyro" aria-label="Gyro steering" aria-pressed="false">Gyro</button>
         <button class="quiet-button" id="touch-settings" aria-expanded="false" aria-controls="flight-controls">Settings</button>
       </div>
     </div>
@@ -344,7 +347,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
       find('#touch-settings').setAttribute('aria-expanded', String(state.touchSettings));
       find('#touch-gyro').setAttribute('aria-pressed', String(state.gyroActive));
       find<HTMLButtonElement>('#touch-gyro').disabled = state.gyroPending;
-      find('#touch-gyro').textContent = state.gyroPending ? 'Allow…' : state.gyroActive ? 'Motion on' : 'Motion';
+      find('#touch-gyro').textContent = state.gyroPending ? 'Allow…' : state.gyroActive ? 'Gyro on' : 'Gyro';
       find('#touch-motion-status').textContent = state.gyroStatus;
       find('#touch-motion-status').hidden = !state.gyroStatus;
       find('#explore-flow').innerHTML = `${state.touchControls ? 'Tap to look around' : 'Click to look around'} <span aria-hidden="true">↗</span>`;

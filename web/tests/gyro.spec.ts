@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 // These are synthetic orientation events in an isolated page, not a claim of
 // testing physical phone sensors or Safari's native permission dialog.
 test.beforeEach(async ({ page }) => {
-  await page.route('**/gyro-fixture', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Motion steering fixture</title>' }));
+  await page.route('**/gyro-fixture', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Gyro steering fixture</title>' }));
   await page.goto('/gyro-fixture');
   await page.evaluate(async () => {
     const { createGyroSteering } = await import('/src/gyro.ts');
@@ -125,7 +125,7 @@ test('permission denial, unsupported sensors and disabling a pending request pre
 test('missing readings show a useful fallback without inventing motion', async ({ page }) => {
   await page.evaluate(() => (window as any).__gyro.enable());
   // Some browsers emit an all-null event when no physical sensor exists.
-  await expect.poll(() => page.evaluate(() => (window as any).__gyro.status())).toMatch(/No motion data received|Motion data unavailable/);
+  await expect.poll(() => page.evaluate(() => (window as any).__gyro.status())).toMatch(/No gyro data received|Gyro data unavailable/);
   expect(await page.evaluate(() => (window as any).__gyro.status())).toContain('Drag');
   expect(await page.evaluate(() => (window as any).__gyro.update(.016))).toBeNull();
 });

@@ -12,7 +12,8 @@ function randomSource(seed: number) {
     value = (value + 0x6D2B79F5) >>> 0;
     let t = Math.imul(value ^ value >>> 15, 1 | value);
     t ^= t + Math.imul(t ^ t >>> 7, 61 | t);
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    // Open interval: no generated clip begins exactly at the initial time.
+    return (((t ^ t >>> 14) >>> 0) + .5) / 4294967296;
   };
 }
 
@@ -20,11 +21,11 @@ function randomSource(seed: number) {
 export function generateIntroClip(seed: number, index: number) {
   const random = randomSource((seed ^ Math.imul(index + 1, 0x9E3779B1)) >>> 0);
   const between = (a: number, b: number) => a + (b-a)*random();
+  const duration = between(INTRO_MIN_SECONDS, INTRO_MAX_SECONDS);
+  const startDistribution = random() < .5 ? 'uniform' : 'logarithmic';
+  const startFraction = random();
   return {
-    index, duration: between(INTRO_MIN_SECONDS, INTRO_MAX_SECONDS),
-    // Always introduce the complete interval first; subsequent windows explore
-    // any magnification up to the last thousandth, without a four-shot cycle.
-    decades: index === 0 ? 0 : between(0, 3),
+    index, duration, startDistribution, startFraction, decades: 3 * startFraction,
     azimuth: between(-180, 180), elevation: Math.asin(between(-.97, .97))*180/Math.PI,
     orbit: between(18, 65)*(random() < .5 ? -1 : 1), lift: between(-8, 8),
     roll: between(-30, 30), rollDrift: between(-10, 10),
@@ -65,9 +66,19 @@ function unitQuaternion(q: Quat): Quat { const n=Math.hypot(...q); return q.map(
 export function sampleIntroClip(config: ReturnType<typeof generateIntroClip>, local: number,
   timeMin = 0, timeMax = .9999) {
   const duration = config.duration;
+  if (!Number.isFinite(timeMin) || !Number.isFinite(timeMax) || timeMin < 0 || timeMin >= timeMax || timeMax >= 1) {
+    throw new RangeError('Cinematic time must be a positive-length interval before the singularity.');
+  }
   const phase = Math.max(0, Math.min(1, local/duration));
   const viewPhase = Math.min(phase, (duration-FADE_SECONDS)/duration), ease = smooth(viewPhase);
-  const startTime = Math.max(timeMin, Math.min(timeMax, 1-(1-timeMin)*10**(-config.decades)));
+  // Equal probability of a broad physical-time view or logarithmic proximity
+  // to the singularity, including the very first clip. Reserve a finite time
+  // window; a uniform draw arbitrarily close to the endpoint is not useful.
+  const latestStart = timeMax - Math.min(.0001, (timeMax - timeMin) / 2);
+  const maximumDecades = Math.min(3, Math.log10((1 - timeMin) / (1 - latestStart)));
+  const startTime = config.startDistribution === 'uniform'
+    ? timeMin + (latestStart - timeMin) * config.startFraction
+    : 1 - (1 - timeMin) * 10 ** (-maximumDecades * config.startFraction);
   const playSeconds = duration-2*FADE_SECONDS;
   const play = Math.max(0, Math.min(1, (local-FADE_SECONDS)/playSeconds));
   const time = startTime+(timeMax-startTime)*play;

@@ -2,7 +2,7 @@ import './styles.css';
 import { initialState } from './types';
 import { createUI } from './ui';
 import { createNavigation } from './navigation';
-import { loadField, sampleVelocity } from './field';
+import { loadField, sampleVelocity, type FieldData } from './field';
 import { advanceTime } from './time';
 import { Renderer } from './renderer';
 import { createIntroDirector, INTRO_FADE_SECONDS } from './intro';
@@ -15,6 +15,12 @@ const state = initialState();
 const navigation = createNavigation(canvas, state);
 const gyro = createGyroSteering();
 let renderer: Renderer | undefined;
+let cachedField: FieldData | undefined;
+let graphicsLost = false;
+let graphicsRecoveries = 0;
+let resumeIntroAfterRecovery = false;
+let recoveryHUD = false;
+let gyroRequest = 0;
 let frameID = 0;
 let disposed = false;
 let lastFrame = performance.now();
@@ -95,13 +101,20 @@ function lookAround() {
 function enterFlight() { stopIntro(); lookAround(); }
 
 async function toggleGyro() {
-  if (state.gyroPending) return;
+  if (state.gyroPending || graphicsLost) return;
   if (state.gyroActive) { gyro.disable(); state.gyroActive = false; }
   else {
+    const request = ++gyroRequest;
     state.gyroPending = true;
-    state.gyroActive = await gyro.enable();
+    state.gyroStatus = 'Requesting Gyro access…'; ui.update();
+    const enabled = await gyro.enable();
+    if (disposed || request !== gyroRequest) return;
+    state.gyroActive = enabled;
     state.gyroPending = false;
   }
+  // A native permission sheet can suspend RAF without changing visibility.
+  // Permission time belongs to the paused viewer, never a catch-up step.
+  lastFrame = performance.now();
   state.gyroStatus = gyro.status(); ui.update();
 }
 
@@ -164,6 +177,7 @@ async function start() {
     startup.dataStart = performance.now();
     if (startupStage) startupStage.textContent = 'Loading flow data…';
     const field = await loadField(state.fieldKind);
+    cachedField = field;
     startup.dataReady = performance.now();
     if (startupStage) startupStage.textContent = 'Preparing the view…';
     if (disposed) return;
@@ -179,16 +193,20 @@ async function start() {
     if (state.fieldKind === 'extended' && new URLSearchParams(location.search).get('intro') !== '0'
         && !matchMedia('(prefers-reduced-motion: reduce)').matches) startIntro();
     ui.update(); lastFrame = performance.now(); frameID = requestAnimationFrame(frame);
-  } catch (error) { showError(error); }
+  } catch (error) { if (!graphicsLost) showError(error); }
 }
 
 function frame(now: number) {
-  if (disposed || !renderer) return;
+  if (disposed || graphicsLost || !renderer) return;
   // A queued RAF timestamp can predate the preceding GPU completion barrier.
   // Use entry time consistently with that barrier so its stall cannot be
   // counted again as elapsed fade time on the next frame.
   now = performance.now();
   const elapsed = (now - lastFrame) / 1000; lastFrame = now;
+  if (state.gyroPending) {
+    frameID = requestAnimationFrame(frame);
+    return;
+  }
   const dt = document.hidden ? 0 : Math.min(.05, Math.max(0, elapsed));
   if (elapsed > 0 && elapsed < 1) state.fps = state.fps ? state.fps * .9 + .1 / elapsed : 1 / elapsed;
   const clockElapsed = document.hidden ? 0 : Math.max(0, elapsed);
@@ -257,11 +275,15 @@ function frame(now: number) {
     renderer.reseed(); reseedAt = -1; canvas.style.opacity = '1';
   }
   try { renderer.render(dt, transportDelta, timeDelta); }
-  catch (error) { renderer.dispose(); showError(error); return; }
+  catch (error) {
+    if (renderer.gl.isContextLost()) return;
+    renderer.dispose(); showError(error); return;
+  }
   if (!firstFrameReady || (state.introActive && (introPriming || introAtEndpoint))) renderer.finishFrame();
   if (!firstFrameReady) {
     firstFrameReady = true; startup.firstFrameReady = performance.now();
     if (startupLoader) startupLoader.hidden = true;
+    lastFrame = performance.now();
   }
   if (state.introActive && introPriming) {
     introPriming = false;
@@ -276,11 +298,46 @@ function frame(now: number) {
 }
 
 const onContextLost = (event: Event) => {
-  event.preventDefault(); cancelAnimationFrame(frameID); state.playing = false;
-  state.status = 'Graphics context lost. Reload the page to restore the observatory.';
-  showError(new Error(state.status));
+  event.preventDefault();
+  if (disposed || graphicsLost) return;
+  graphicsLost = true; cancelAnimationFrame(frameID);
+  resumeIntroAfterRecovery = state.introActive; recoveryHUD = state.hudActive;
+  cachedField = renderer?.field ?? cachedField;
+  gyroRequest++; gyro.disable(); state.gyroActive = false; state.gyroPending = false;
+  state.gyroStatus = 'Gyro is off.';
+  renderer?.dispose(); renderer = undefined; debug.renderer = undefined;
+  state.playing = false; state.loading = true; state.flowAvailable = false;
+  reseedAt = -1; firstFrameReady = false; startup.firstFrameReady = 0;
+  if (graphicsRecoveries >= 2 || !cachedField) {
+    showError(new Error('Graphics could not recover reliably. Reload the page to try again.'));
+    return;
+  }
+  state.status = 'Restoring graphics…';
+  if (startupStage) startupStage.textContent = state.status;
+  if (startupLoader) startupLoader.hidden = false;
+  ui.update();
+};
+const onContextRestored = () => {
+  if (disposed || !graphicsLost || !cachedField || graphicsRecoveries >= 2) return;
+  graphicsRecoveries++;
+  try {
+    renderer = new Renderer(canvas, state, cachedField); debug.renderer = renderer;
+    graphicsLost = false; startup.rendererReady = performance.now();
+    state.loading = false; state.flowAvailable = true; state.playing = false;
+    gyro.recalibrate(); renderer.reseed();
+    // Lost GPU particle buffers cannot retain their identities. Restart an
+    // automatic clip cleanly; manual exploration keeps its pose, time and optics.
+    if (resumeIntroAfterRecovery) { startIntro(); state.hudActive = recoveryHUD; }
+    else { canvas.style.transition = 'none'; canvas.style.opacity = '1'; }
+    state.status = 'Graphics restored. Gyro is off.';
+    ui.update(); lastFrame = performance.now(); frameID = requestAnimationFrame(frame);
+  } catch (error) {
+    renderer?.dispose(); renderer = undefined; debug.renderer = undefined;
+    showError(error);
+  }
 };
 canvas.addEventListener('webglcontextlost', onContextLost);
+canvas.addEventListener('webglcontextrestored', onContextRestored);
 const onVisibility = () => { lastFrame = performance.now(); };
 document.addEventListener('visibilitychange', onVisibility);
 const onManualInput = (event: Event) => {
@@ -293,7 +350,7 @@ function returnToAuto() {
 }
 let wasCaptured = false;
 const onCaptureChange = () => {
-  if (disposed) return;
+  if (disposed || graphicsLost) return;
   const captured = document.pointerLockElement === canvas;
   // Native Escape may be consumed by the browser before our key handler.
   // Releasing capture must still return manual flight to the movie.
@@ -341,7 +398,8 @@ void start();
 
 if (import.meta.hot) import.meta.hot.dispose(() => {
   disposed = true; cancelAnimationFrame(frameID); renderer?.dispose(); navigation.dispose(); gyro.dispose(); ui.dispose();
-  canvas.removeEventListener('webglcontextlost', onContextLost); document.removeEventListener('visibilitychange', onVisibility);
+  canvas.removeEventListener('webglcontextlost', onContextLost);
+  canvas.removeEventListener('webglcontextrestored', onContextRestored); document.removeEventListener('visibilitychange', onVisibility);
   document.removeEventListener('pointerdown', onManualInput, true); document.removeEventListener('input', onManualInput, true);
   document.removeEventListener('keydown', onIntroKey, true);
   document.removeEventListener('pointerlockchange', onCaptureChange);
