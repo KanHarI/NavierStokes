@@ -60,13 +60,14 @@ export function createNavigation(canvas: HTMLCanvasElement, state: AppState) {
       if (!event.repeat && state.flowAvailable && !state.loading) state.playing = !state.playing;
       return;
     }
-    if (!state.pointerLocked || !flightKeys.has(event.code)) return;
+    if (state.referenceView || !state.pointerLocked || !flightKeys.has(event.code)) return;
     event.preventDefault();
     keys.add(event.code);
     state.boosting = keys.has('ShiftLeft') || keys.has('ShiftRight');
   };
   const keyup = (event: KeyboardEvent) => { keys.delete(event.code); state.boosting = keys.has('ShiftLeft') || keys.has('ShiftRight'); };
   const look = (dx: number, dy: number, sensitivity: number) => {
+    if (state.referenceView) return;
     const yaw = -dx * sensitivity / 2;
     const pitch = -dy * sensitivity / 2;
     const q = multiply(state.introActive ? introLook : state.ship.orientation, [0, Math.sin(yaw), 0, Math.cos(yaw)]);
@@ -77,7 +78,7 @@ export function createNavigation(canvas: HTMLCanvasElement, state: AppState) {
   const mousemove = (event: MouseEvent) => {
     if (state.pointerLocked && document.pointerLockElement === canvas) look(event.movementX, event.movementY, .0018);
   };
-  const touchEnabled = () => state.touchControls && state.hudActive && !state.screensaver && !state.touchSettings;
+  const touchEnabled = () => !state.referenceView && state.touchControls && state.hudActive && !state.screensaver && !state.touchSettings;
   const pointerdown = (event: PointerEvent) => {
     if (event.pointerType !== 'touch' || !touchEnabled() || touches.size >= 2) return;
     event.preventDefault();
@@ -123,6 +124,7 @@ export function createNavigation(canvas: HTMLCanvasElement, state: AppState) {
 
   return {
     rotateLook(delta: Quat) {
+      if (state.referenceView) return;
       if (state.introActive) introLook = normalize(multiply(introLook, delta));
       else state.ship.orientation = normalize(multiply(state.ship.orientation, delta));
     },
@@ -145,6 +147,7 @@ export function createNavigation(canvas: HTMLCanvasElement, state: AppState) {
     },
     resetIntroLook() { introLook = [0, 0, 0, 1]; introOffset = [0, 0, 0]; introOptics = neutralOptics(); clearKeys(); },
     update(elapsed: number) {
+      if (state.referenceView) { clearKeys(); return; }
       const dt = Math.min(Math.max(elapsed, 0), 0.1);
       if (!state.pointerLocked) return;
       const axis = (positive: string, negative: string) => Number(keys.has(positive)) - Number(keys.has(negative));

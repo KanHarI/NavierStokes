@@ -5,6 +5,8 @@ export interface AppState {
   isCore: boolean;
   fieldKind: 'core' | 'exterior' | 'extended';
   introActive: boolean;
+  /** Fixed camera and optics; time controls remain available. */
+  referenceView: boolean;
   hudActive: boolean;
   screensaver: boolean;
   touchControls: boolean;
@@ -59,6 +61,7 @@ export interface AppState {
 export interface Actions {
   startIntro(): void;
   stopIntro(): void;
+  toggleReference(): void;
   reset(): void;
   reseed(): void;
   scrub(time: number): void;
@@ -75,7 +78,7 @@ export function initialState(): AppState {
   const isCore = fieldKind !== 'exterior';
   return {
     isCore, fieldKind,
-    introActive: false, hudActive: false, screensaver: false,
+    introActive: false, referenceView: false, hudActive: false, screensaver: false,
     touchControls: matchMedia('(pointer: coarse)').matches, touchSettings: false,
     gyroActive: false, gyroPending: false, gyroStatus: '',
     introShot: 0, introProgress: 0, introDuration: 0, introTitle: '', introCaption: '',

@@ -1,0 +1,436 @@
+{
+  "candidates": [
+    {
+      "scope": "sampled real-axis core feasibility; not global or theorem certification",
+      "axis_gate": {
+        "scope": "local analytic axis datum; outer pressure and moments unmatched",
+        "h_root_eta": -0.005561716315493014,
+        "Z_at_H_zero": 0.1325219635184188,
+        "minimum_negative_W_sampled": 2.93525,
+        "B2_delta": 0.0331304908796047,
+        "Z_roots": [
+          -0.8571045658349645,
+          -0.002555047976874076,
+          0.853384469545641
+        ],
+        "minimum_chi_near_Z_zero_sampled": 0.0004108140658893728,
+        "B2_sampled_condition": false,
+        "log_C": 1.3907381661379363,
+        "global_matching_certified": false,
+        "analytic_convergence_threshold_certified": false
+      },
+      "sampling": {
+        "eta_count": 55,
+        "Y": [
+          0.0,
+          0.5,
+          1.0,
+          2.0,
+          3.0,
+          4.0,
+          4.1
+        ],
+        "orders": [
+          18,
+          24,
+          32
+        ],
+        "eta_H": -0.005561716315493014,
+        "chi_transition_width_estimate": 0.11123700931756578,
+        "g_peak_standard_deviation_estimate": 0.058958948569686455,
+        "uniform_eta_intervals_for_8_samples_per_g_sigma": 272
+      },
+      "max_order_refinement_changes": [
+        6.315974051131614e-12,
+        2.3516316807962327e-16
+      ],
+      "minimum_Phi": 0.16051881584063066,
+      "max_normalized_equation_residual": 2.7172661586234925e-15,
+      "minimum_B17_source_margin": -6.229281202235342,
+      "minimum_B17_source_location": {
+        "eta": 0.9377814607994903,
+        "Y": 4.1
+      },
+      "minimum_B19_endpoint_margin_above_2": -1.4400040112863266,
+      "minimum_B19_sufficient_alternative_margin": -1.4400040112863266,
+      "nonpositive_B19_p1_eta": [],
+      "g_underflow_eta_count": 0,
+      "errors": [],
+      "sampled_core_resolved": true,
+      "sampled_continuation_checks_pass": false,
+      "browser_export_ready": false,
+      "unresolved": [
+        "complex-neighborhood C bound",
+        "annular moment/stress matching",
+        "adaptive lookup and precision validation",
+        "higher corrections"
+      ],
+      "parameters": {
+        "h": 0.005,
+        "j0": 0.025,
+        "pressure_scale": 4.0,
+        "sigma": 0.5,
+        "lambda_": 16.0,
+        "axis_amplitude": 0.25,
+        "outer_schedule": null
+      },
+      "elapsed_seconds": 15.32
+    },
+    {
+      "scope": "sampled real-axis core feasibility; not global or theorem certification",
+      "axis_gate": {
+        "scope": "finite outer-schedule pressure; global moments/cone uncertified",
+        "h_root_eta": -0.005561716315493014,
+        "Z_at_H_zero": 0.13252196351841877,
+        "minimum_negative_W_sampled": 2.93525,
+        "B2_delta": 0.03313049087960469,
+        "Z_roots": [
+          -0.8571045658349645,
+          -0.002555047976874076,
+          0.853384469545641
+        ],
+        "minimum_chi_near_Z_zero_sampled": 0.9975727148101698,
+        "B2_sampled_condition": true,
+        "log_C": 20.83343023372123,
+        "global_matching_certified": false,
+        "analytic_convergence_threshold_certified": false
+      },
+      "sampling": {
+        "eta_count": 57,
+        "Y": [
+          0.0,
+          0.5,
+          1.0,
+          2.0,
+          3.0,
+          4.0,
+          4.1
+        ],
+        "orders": [
+          18,
+          24,
+          32
+        ],
+        "eta_H": -0.005561716315493014,
+        "chi_transition_width_estimate": 0.00011123700931756578,
+        "g_peak_standard_deviation_estimate": 5.8958948569686456e-05,
+        "uniform_eta_intervals_for_8_samples_per_g_sigma": 271376
+      },
+      "max_order_refinement_changes": [
+        6.317937069429726,
+        2.7798305409316644
+      ],
+      "minimum_Phi": -10.048115945636617,
+      "max_normalized_equation_residual": 4.131463565258497,
+      "minimum_B17_source_margin": -3947.385633869658,
+      "minimum_B17_source_location": {
+        "eta": -0.005546976578350593,
+        "Y": 4.0
+      },
+      "minimum_B19_endpoint_margin_above_2": null,
+      "minimum_B19_sufficient_alternative_margin": null,
+      "nonpositive_B19_p1_eta": [
+        -0.005679634212632387,
+        -0.00567295332481058,
+        -0.005620675264062701,
+        -0.005617334820151797,
+        -0.005591195789777857,
+        -0.005589525567822405,
+        -0.0055764560526354355,
+        -0.005561716315493014,
+        -0.005546976578350593,
+        -0.005443798418353641,
+        -0.005339242296857882,
+        -0.005325880521214269,
+        -0.005116768278222751,
+        -0.005090044726935522,
+        -0.004671820240952488,
+        -0.004618373138378031
+      ],
+      "g_underflow_eta_count": 0,
+      "errors": [],
+      "sampled_core_resolved": false,
+      "sampled_continuation_checks_pass": false,
+      "browser_export_ready": false,
+      "unresolved": [
+        "complex-neighborhood C bound",
+        "annular moment/stress matching",
+        "adaptive lookup and precision validation",
+        "higher corrections"
+      ],
+      "parameters": {
+        "h": 0.005,
+        "j0": 0.025,
+        "pressure_scale": 4.0,
+        "sigma": 0.0005,
+        "lambda_": 16.0,
+        "axis_amplitude": 0.001,
+        "outer_schedule": {
+          "h": 0.005,
+          "m_d": 2.0,
+          "p_star": 1.0985325849843381,
+          "lambda_": 0.08,
+          "interpolation_length": 30.0,
+          "terminal_coefficient": 0.005
+        }
+      },
+      "elapsed_seconds": 15.756
+    },
+    {
+      "scope": "sampled real-axis core feasibility; not global or theorem certification",
+      "axis_gate": {
+        "scope": "finite outer-schedule pressure; global moments/cone uncertified",
+        "h_root_eta": -0.005561716315493014,
+        "Z_at_H_zero": 0.13252196351841877,
+        "minimum_negative_W_sampled": 2.93525,
+        "B2_delta": 0.03313049087960469,
+        "Z_roots": [
+          -0.8571045658349645,
+          -0.002555047976874076,
+          0.853384469545641
+        ],
+        "minimum_chi_near_Z_zero_sampled": 0.9975727148101698,
+        "B2_sampled_condition": true,
+        "log_C": 877.2624399501753,
+        "global_matching_certified": false,
+        "analytic_convergence_threshold_certified": false
+      },
+      "sampling": {
+        "eta_count": 57,
+        "Y": [
+          0.0,
+          0.5,
+          1.0,
+          2.0,
+          3.0,
+          4.0,
+          4.1
+        ],
+        "orders": [
+          18,
+          24,
+          32
+        ],
+        "eta_H": -0.005561716315493014,
+        "chi_transition_width_estimate": 0.00011123700931756578,
+        "g_peak_standard_deviation_estimate": 7.457782637157437e-06,
+        "uniform_eta_intervals_for_8_samples_per_g_sigma": 2145410
+      },
+      "max_order_refinement_changes": [
+        0.0,
+        0.0
+      ],
+      "minimum_Phi": 0.2635584099422414,
+      "max_normalized_equation_residual": 1.0554712960393806e-13,
+      "minimum_B17_source_margin": -236.16516617113342,
+      "minimum_B17_source_location": {
+        "eta": -0.005450479306175448,
+        "Y": 4.1
+      },
+      "minimum_B19_endpoint_margin_above_2": null,
+      "minimum_B19_sufficient_alternative_margin": null,
+      "nonpositive_B19_p1_eta": [
+        -0.005559851869833724,
+        -0.0055579874241744355,
+        -0.005554258532855857,
+        -0.005546800750218699,
+        -0.005533907063163623,
+        -0.005531885184944385
+      ],
+      "g_underflow_eta_count": 27,
+      "errors": [],
+      "sampled_core_resolved": true,
+      "sampled_continuation_checks_pass": false,
+      "browser_export_ready": false,
+      "unresolved": [
+        "complex-neighborhood C bound",
+        "annular moment/stress matching",
+        "adaptive lookup and precision validation",
+        "higher corrections"
+      ],
+      "parameters": {
+        "h": 0.005,
+        "j0": 0.025,
+        "pressure_scale": 4.0,
+        "sigma": 0.0005,
+        "lambda_": 1000.0,
+        "axis_amplitude": 0.001,
+        "outer_schedule": {
+          "h": 0.005,
+          "m_d": 2.0,
+          "p_star": 1.0985325849843381,
+          "lambda_": 0.08,
+          "interpolation_length": 30.0,
+          "terminal_coefficient": 0.005
+        }
+      },
+      "elapsed_seconds": 15.636
+    },
+    {
+      "scope": "sampled real-axis core feasibility; not global or theorem certification",
+      "axis_gate": {
+        "scope": "finite outer-schedule pressure; global moments/cone uncertified",
+        "h_root_eta": -0.005561716315493014,
+        "Z_at_H_zero": 0.13252196351841877,
+        "minimum_negative_W_sampled": 2.93525,
+        "B2_delta": 0.03313049087960469,
+        "Z_roots": [
+          -0.8571045658349645,
+          -0.002555047976874076,
+          0.853384469545641
+        ],
+        "minimum_chi_near_Z_zero_sampled": 0.9975727148101698,
+        "B2_sampled_condition": true,
+        "log_C": 870361.5924264722,
+        "global_matching_certified": false,
+        "analytic_convergence_threshold_certified": false
+      },
+      "sampling": {
+        "eta_count": 57,
+        "Y": [
+          0.0,
+          0.5,
+          1.0,
+          2.0,
+          3.0,
+          4.0,
+          4.1
+        ],
+        "orders": [
+          18,
+          24,
+          32
+        ],
+        "eta_H": -0.005561716315493014,
+        "chi_transition_width_estimate": 0.00011123700931756578,
+        "g_peak_standard_deviation_estimate": 2.3583579427874588e-07,
+        "uniform_eta_intervals_for_8_samples_per_g_sigma": 67843816
+      },
+      "max_order_refinement_changes": [
+        0.0,
+        0.0
+      ],
+      "minimum_Phi": 0.2711104114718116,
+      "max_normalized_equation_residual": 2.2346883323483943e-13,
+      "minimum_B17_source_margin": -0.9094691668915047,
+      "minimum_B17_source_location": {
+        "eta": -0.005561244643904457,
+        "Y": 4.1
+      },
+      "minimum_B19_endpoint_margin_above_2": 5016.645073578305,
+      "minimum_B19_sufficient_alternative_margin": 1.3644670650566484,
+      "nonpositive_B19_p1_eta": [],
+      "g_underflow_eta_count": 42,
+      "errors": [],
+      "sampled_core_resolved": true,
+      "sampled_continuation_checks_pass": false,
+      "browser_export_ready": false,
+      "unresolved": [
+        "complex-neighborhood C bound",
+        "annular moment/stress matching",
+        "adaptive lookup and precision validation",
+        "higher corrections"
+      ],
+      "parameters": {
+        "h": 0.005,
+        "j0": 0.025,
+        "pressure_scale": 4.0,
+        "sigma": 0.0005,
+        "lambda_": 1000000.0,
+        "axis_amplitude": 0.001,
+        "outer_schedule": {
+          "h": 0.005,
+          "m_d": 2.0,
+          "p_star": 1.0985325849843381,
+          "lambda_": 0.08,
+          "interpolation_length": 30.0,
+          "terminal_coefficient": 0.005
+        }
+      },
+      "elapsed_seconds": 15.608
+    },
+    {
+      "scope": "sampled real-axis core feasibility; not global or theorem certification",
+      "axis_gate": {
+        "scope": "finite outer-schedule pressure; global moments/cone uncertified",
+        "h_root_eta": -0.005561716315493014,
+        "Z_at_H_zero": 0.13252196351841877,
+        "minimum_negative_W_sampled": 2.93525,
+        "B2_delta": 0.03313049087960469,
+        "Z_roots": [
+          -0.8571045658349645,
+          -0.002555047976874076,
+          0.853384469545641
+        ],
+        "minimum_chi_near_Z_zero_sampled": 0.9975727148101698,
+        "B2_sampled_condition": true,
+        "log_C": 8703553.75446721,
+        "global_matching_certified": false,
+        "analytic_convergence_threshold_certified": false
+      },
+      "sampling": {
+        "eta_count": 57,
+        "Y": [
+          0.0,
+          0.5,
+          1.0,
+          2.0,
+          3.0,
+          4.0,
+          4.1
+        ],
+        "orders": [
+          18,
+          24,
+          32
+        ],
+        "eta_H": -0.005561716315493014,
+        "chi_transition_width_estimate": 0.00011123700931756578,
+        "g_peak_standard_deviation_estimate": 7.457782637157437e-08,
+        "uniform_eta_intervals_for_8_samples_per_g_sigma": 214540981
+      },
+      "max_order_refinement_changes": [
+        0.0,
+        0.0
+      ],
+      "minimum_Phi": 0.27111379699309324,
+      "max_normalized_equation_residual": 7.959953361542873e-13,
+      "minimum_B17_source_margin": 0.3553535087370401,
+      "minimum_B17_source_location": {
+        "eta": -0.005561641737666642,
+        "Y": 4.1
+      },
+      "minimum_B19_endpoint_margin_above_2": 5320.102993432053,
+      "minimum_B19_sufficient_alternative_margin": 1.3645006728056757,
+      "nonpositive_B19_p1_eta": [],
+      "g_underflow_eta_count": 42,
+      "errors": [],
+      "sampled_core_resolved": true,
+      "sampled_continuation_checks_pass": true,
+      "browser_export_ready": false,
+      "unresolved": [
+        "complex-neighborhood C bound",
+        "annular moment/stress matching",
+        "adaptive lookup and precision validation",
+        "higher corrections"
+      ],
+      "parameters": {
+        "h": 0.005,
+        "j0": 0.025,
+        "pressure_scale": 4.0,
+        "sigma": 0.0005,
+        "lambda_": 10000000.0,
+        "axis_amplitude": 0.001,
+        "outer_schedule": {
+          "h": 0.005,
+          "m_d": 2.0,
+          "p_star": 1.0985325849843381,
+          "lambda_": 0.08,
+          "interpolation_length": 30.0,
+          "terminal_coefficient": 0.005
+        }
+      },
+      "elapsed_seconds": 15.582
+    }
+  ]
+}

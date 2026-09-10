@@ -9,7 +9,7 @@ certify the theorem's finite-parameter/cone schedule.
 import math
 from functools import lru_cache
 
-from profile_parameters import AxisParameters, axis_amplitude_at
+from profile_parameters import AxisParameters, axis_amplitude_at, pressure_taylor
 
 
 class _Jet:
@@ -91,8 +91,7 @@ def coefficients(eta, parameters=AxisParameters(), order=22):
     g_squared = g*g
     phi = [one]
     u = [u_axis]
-    f = (1+e*e).reciprocal()
-    pressure = [-parameters.pressure_scale*f*f]
+    pressure = [_Jet(pressure_taylor(eta, degree, parameters))]
     w, hc = [], []
     inv_scale = (2*lam*ell).reciprocal()
     for n in range(order):
@@ -144,10 +143,14 @@ def evaluate(y, eta, parameters=AxisParameters(), order=22):
     ux, uxx, ueta = lam*value(u,ry=1), lam*lam*value(u,ry=2), value(u,re=1)
     pix, pieta = lam*value(pressure,ry=1), value(pressure,re=1)
     x = y/lam
-    sq = -w*(1+x*f_x/f)-h*(1-2*eta*u0)-hc*f_eta/f
+    # The positive axis amplitude can underflow for narrow candidate profiles.
+    # Cancel that common factor analytically when evaluating equation residuals;
+    # exporters must separately check whether the swirl is representable.
+    sq = (-w*(1+y*value(phi,ry=1)/p0)-h*(1-2*eta*u0)
+          -hc*(value(phi,re=1)/p0+xi.c[0]))
     sn = (-w*x*ux-(.5+h)*(1-2*eta*u0)*u0-hc*ueta
           -d*pieta+4*(.5+h)*eta*value(pressure)+2*eta*x*pix)
-    angular_lhs = -2*ell*(x*f_xx+2*f_x)/f
+    angular_lhs = -2*ell*lam*(y*value(phi,ry=2)+2*value(phi,ry=1))/p0
     axial_lhs = -2*ell*(x*uxx+ux)
     # Derivatives of v0 from the incompressibility integral, retaining eta jets.
     e = _Jet((eta,1.0)+(0.0,)*(len(g.c)-2))

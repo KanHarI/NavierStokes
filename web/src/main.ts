@@ -64,6 +64,7 @@ function startIntro() {
   gyro.recalibrate();
   state.hudActive = false;
   state.touchSettings = false;
+  state.referenceView = false;
   state.introActive = true; state.playing = true;
   state.independentDust = false; state.colorMode = 'white'; state.distanceSaturation = false;
   state.timeMode = 'linear'; state.density = 70; state.exposure = 2.5;
@@ -105,7 +106,24 @@ function lookAround() {
   });
 }
 
-function enterFlight() { stopIntro(); lookAround(); }
+function enterFlight() {
+  if (state.referenceView) { state.referenceView = false; state.playing = false; }
+  stopIntro(); lookAround();
+}
+
+function toggleReference() {
+  if (!state.flowAvailable || state.loading) return;
+  if (state.referenceView) {
+    state.referenceView = false; state.playing = false;
+  } else {
+    stopIntro(false);
+    navigation.resetIntroLook(); gyro.recalibrate();
+    state.referenceView = true;
+    state.timeMode = 'linear'; state.independentDust = false;
+    state.playing = state.time < state.timeMax;
+  }
+  lastFrame = performance.now(); ui.update();
+}
 
 async function toggleGyro() {
   if (state.gyroPending || graphicsLost) return;
@@ -127,6 +145,7 @@ async function toggleGyro() {
 }
 
 function updateNavigation(dt: number) {
+  if (state.referenceView) { gyro.recalibrate(); return; }
   if (state.gyroActive && state.hudActive && !state.touchSettings && !state.screensaver) {
     const delta = gyro.update(dt);
     if (delta) navigation.rotateLook(delta);
@@ -152,7 +171,7 @@ function stopScreensaver() {
 }
 
 const ui = createUI(container, state, {
-  startIntro, stopIntro,
+  startIntro, stopIntro, toggleReference,
   reset() { navigation.reset(); reseed(); },
   reseed,
   scrub(time) {
@@ -309,6 +328,7 @@ function frame(now: number) {
   state.status = !validShip ? 'Ship outside sampled patch · nearby valid dust only' :
     state.time >= state.timeMax ? 'Dataset endpoint · reset time to continue' :
     state.independentDust ? 'Independent dust · exploratory trajectories' :
+    state.referenceView ? `Fixed reference view · ${state.playing ? 'linear time, synchronized tracers' : 'paused'}` :
     state.playing ? 'Fluid flow · synchronized tracers' : 'Paused · optics and flight remain active';
   if (reseedAt >= 0 && now >= reseedAt) {
     renderer.reseed(); reseedAt = -1; canvas.style.opacity = '1';
@@ -445,6 +465,12 @@ const onIntroKey = (event: KeyboardEvent) => {
     if (state.screensaver) { stopScreensaver(); return; }
     if (state.pointerLocked || document.pointerLockElement === canvas) document.exitPointerLock();
     returnToAuto();
+    return;
+  }
+  if (event.code === 'KeyV' && state.hudActive) {
+    if (!state.pointerLocked && event.target instanceof Element
+        && event.target.closest('button, input, select, textarea, summary, a, [contenteditable="true"]')) return;
+    event.preventDefault(); event.stopImmediatePropagation(); toggleReference();
     return;
   }
   if (!state.introActive || event.code !== 'Space') return;

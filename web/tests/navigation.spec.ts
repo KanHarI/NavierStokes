@@ -9,6 +9,45 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/navigation-fixture?field=exterior');
 });
 
+test('reference mode ignores flight and optical input while allowing play and pause', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const { createNavigation } = await import('/src/navigation.ts');
+    const { initialState } = await import('/src/types.ts');
+    const state = initialState();
+    state.flowAvailable = true; state.loading = false;
+    const canvas = document.querySelector('canvas')!;
+    const navigation = createNavigation(canvas, state);
+    Object.defineProperty(document, 'pointerLockElement', { configurable: true, get: () => canvas });
+    document.dispatchEvent(new Event('pointerlockchange'));
+    const before = JSON.stringify([state.ship, state.exposure, state.fov, state.near, state.far, state.focus, state.blur]);
+    // A key held before locking must not resume after unlocking.
+    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }));
+    state.referenceView = true;
+    for (const code of ['KeyX', 'KeyQ', 'Equal', 'BracketRight', 'Digit2', 'Digit4', 'Digit6']) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { code }));
+    }
+    document.dispatchEvent(new MouseEvent('mousemove', { movementX: 20, movementY: 30 }));
+    navigation.rotateLook([.1, 0, 0, .995]);
+    navigation.update(.1);
+    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+    const playing = state.playing;
+    const locked = JSON.stringify([state.ship, state.exposure, state.fov, state.near, state.far, state.focus, state.blur]);
+    state.referenceView = false;
+    navigation.update(.1);
+    const released = JSON.stringify([state.ship, state.exposure, state.fov, state.near, state.far, state.focus, state.blur]);
+    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }));
+    navigation.update(.1);
+    const moved = JSON.stringify(state.ship) !== JSON.stringify(JSON.parse(before)[0]);
+    delete (document as any).pointerLockElement;
+    navigation.dispose();
+    return { before, locked, released, playing, moved };
+  });
+  expect(result.locked).toBe(result.before);
+  expect(result.released).toBe(result.before);
+  expect(result.playing).toBe(true);
+  expect(result.moved).toBe(true);
+});
+
 test('normalizes orientation and remains a finite rotation after repeated local mouse and roll input', async ({ page }) => {
   const result = await page.evaluate(async () => {
     const { createNavigation } = await import('/src/navigation.ts');

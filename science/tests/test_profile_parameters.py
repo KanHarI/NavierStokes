@@ -69,6 +69,32 @@ class AxisParameterTests(unittest.TestCase):
         self.assertGreater(report["minimum_chi_near_Z_zero_sampled"], .997)
         self.assertFalse(report["global_matching_certified"])
 
+    def test_narrow_amplitude_quadrature_resolves_endpoints(self):
+        parameters = AxisParameters(sigma=.0005, lambda_=1000.)
+        peak = axis_peak_eta(parameters)
+        values = [axis_log_amplitude(eta, parameters) for eta in (-1., peak, 0., 1.)]
+        self.assertTrue(all(math.isfinite(value) for value in values))
+        self.assertEqual(values[1], math.log(parameters.axis_amplitude))
+        for eta in (-.9, -.02, .02, .9):
+            step = 1e-7
+            measured = (axis_log_amplitude(eta+step, parameters)-axis_log_amplitude(eta-step, parameters))/(2*step)
+            expected = parameters.lambda_*axis_quantities(eta, parameters)['zeta']
+            self.assertAlmostEqual(measured/expected, 1., delta=2e-7)
+
+    def test_core_uses_the_entire_selected_outer_pressure_datum(self):
+        from outer_schedule import OuterScheduleParameters, pressure_taylor as outer_taylor
+        from core_profiles import coefficients, evaluate
+        schedule = OuterScheduleParameters()
+        parameters = AxisParameters(outer_schedule=schedule)
+        for eta in (-.6, 0., .6):
+            pressure = coefficients(eta, parameters, 18)[2][0]
+            self.assertEqual(pressure.c, tuple(outer_taylor(eta, 21, schedule)))
+            actual = evaluate(1., eta, parameters, 22)
+            self.assertLess(actual['angular_relative_residual'], 1e-7)
+            self.assertLess(actual['axial_relative_residual'], 1e-7)
+        with self.assertRaisesRegex(ValueError, 'same h'):
+            AxisParameters(h=.001, outer_schedule=schedule)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -634,7 +634,7 @@ export class Renderer {
       * Math.max(1, frame.requested / this.capacity)
       * (s.densityCompensation ? 500 / Math.max(1, s.density) : 1));
     this.f(this.drawProgram, 'uColorMax', s.maxSpeed); this.i(this.drawProgram, 'uColor', s.colorMode === 'speed' ? 1 : 0);
-    const shutter = s.introActive && frame.transportDelta > 0
+    const shutter = (s.introActive || s.referenceView) && frame.transportDelta > 0
       ? Math.min(.02 * (this.field.manifest.time.singular-s.time), s.playbackSpeed * .035) : 0;
     this.f(this.drawProgram, 'uShutter', shutter);
     this.i(this.drawProgram, 'uSaturation', s.distanceSaturation ? 1 : 0);

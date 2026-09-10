@@ -20,6 +20,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
           <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.438 9.8 8.205 11.385.6.11.82-.26.82-.577 0-.285-.01-1.04-.015-2.04-3.338.725-4.043-1.61-4.043-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.73.083-.73 1.205.085 1.838 1.237 1.838 1.237 1.07 1.835 2.807 1.305 3.492.998.108-.776.418-1.305.76-1.605-2.665-.3-5.467-1.335-5.467-5.93 0-1.31.468-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23A11.5 11.5 0 0 1 12 6.3c1.02.005 2.045.138 3.005.405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.295 24 17.795 24 12.5c0-6.63-5.37-12-12-12Z"/></svg>
         </a>
         <button class="quiet-button" id="screensaver">Screensaver</button>
+        <button class="quiet-button" id="reference-view" aria-pressed="false">Reference view</button>
         <button class="quiet-button" id="replay-intro">Replay sequence</button>
         <select id="field-select" aria-label="Scientific field"><option value="extended">Core & surroundings</option><option value="core">Isolated core</option><option value="exterior">Heat exterior</option></select>
         <button class="quiet-button" id="toggle-help" aria-expanded="false" aria-controls="flight-help">Flight guide</button>
@@ -28,6 +29,10 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
     </header>
     <aside class="control-panel" id="flight-controls" aria-label="Exploration controls">
       <div class="panel-top"><h2>Observation controls</h2><span>ESC to interact</span><button class="quiet-button touch-close" id="touch-close">Done</button></div>
+      <div class="reference-controls">
+        <button class="quiet-button" id="reference-settings" aria-pressed="false">Use this view as reference</button>
+        <p class="small-note" id="reference-description">Fix the current camera, scale, radar, ISO and dust density while linear time advances. Unlock to reframe. Time speed and scrubbing remain available.</p>
+      </div>
       <details class="control-section" open><summary>Optics & light</summary><div class="section-content" id="optics-controls"></div></details>
       <details class="control-section"><summary>Ship & scale</summary><div class="section-content" id="ship-controls"></div></details>
       <details class="control-section"><summary>Dust & color</summary><div class="section-content" id="dust-controls"></div></details>
@@ -48,6 +53,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
         <dt>1 / 2</dt><dd>Shell depth narrower / wider</dd>
         <dt>3 / 4</dt><dd>Focus nearer / farther</dd>
         <dt>5 / 6</dt><dd>Gaussian bokeh less / more</dd>
+        <dt>V</dt><dd>Lock / unlock the current reference view</dd>
         <dt>Space</dt><dd>Take control during a movie; otherwise play / pause</dd>
         <dt>Esc</dt><dd>Return to the automatic movie</dd>
       </dl>
@@ -88,10 +94,13 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
           <div><dt>Z / X</dt><dd>Radar range</dd></div><div><dt>Shift</dt><dd>Move faster</dd></div>
           <div><dt>− / +</dt><dd>Brightness</dd></div><div><dt>[ / ]</dt><dd>View width</dd></div>
           <div><dt>1 / 2</dt><dd>Shell thickness</dd></div><div><dt>3 / 4</dt><dd>Focus distance</dd></div>
-          <div><dt>5 / 6</dt><dd>Bokeh</dd></div><div><dt>Space</dt><dd id="hud-space-action">Take control</dd></div>
-          <div><dt>Esc</dt><dd>Return to auto</dd></div>
+          <div><dt>5 / 6</dt><dd>Bokeh</dd></div>
+          <div class="reference-key"><dt>V</dt><dd>Lock / unlock reference</dd></div>
+          <div class="reference-key"><dt>Space</dt><dd id="hud-space-action">Take control</dd></div>
+          <div class="reference-key"><dt>Esc</dt><dd>Return to auto</dd></div>
         </dl>
         <button id="take-control" class="quiet-button">Press Space to take control</button>
+        <button id="reference-hud" class="quiet-button" aria-pressed="false">Use this view as reference</button>
       </div>
     </section>
     <div class="touch-toolbar" hidden>
@@ -314,6 +323,9 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
   on(find('#explore-flow'), 'click', () => actions.lookAround());
   on(find('#take-control'), 'click', () => actions.enterFlight());
   on(replayIntro, 'click', () => actions.startIntro());
+  for (const selector of ['#reference-view', '#reference-settings', '#reference-hud']) {
+    on(find(selector), 'click', () => actions.toggleReference());
+  }
   on(find('#screensaver'), 'click', () => actions.startScreensaver());
   on(find('#touch-auto'), 'click', () => actions.returnToAuto());
   on(find('#touch-gyro'), 'click', () => actions.toggleGyro());
@@ -339,6 +351,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
       for (const binding of bindings) binding.update();
       root.classList.toggle('is-captured', state.pointerLocked);
       root.classList.toggle('is-intro', state.introActive);
+      root.classList.toggle('is-reference', state.referenceView);
       root.classList.toggle('is-hud', state.hudActive);
       root.classList.toggle('is-screensaver', state.screensaver);
       root.classList.toggle('is-touch', state.touchControls);
@@ -353,6 +366,30 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
       find('#touch-motion-status').hidden = !state.gyroStatus;
       find('#explore-flow').innerHTML = `${state.touchControls ? 'Tap to look around' : 'Click to look around'} <span aria-hidden="true">↗</span>`;
       find('#enter-flight').textContent = state.touchControls ? 'Touch to explore' : 'Click to fly ↗';
+      for (const selector of ['#reference-view', '#reference-settings', '#reference-hud']) {
+        const button = find<HTMLButtonElement>(selector);
+        button.textContent = state.referenceView ? 'Unlock reference view' : selector === '#reference-view' ? 'Reference view' : 'Use this view as reference';
+        button.setAttribute('aria-pressed', String(state.referenceView));
+        button.disabled = !hasFlow();
+      }
+      find('#reference-description').textContent = state.referenceView
+        ? 'Reference locked: camera, scale, radar, ISO and dust density stay fixed. Time is linear; dust follows the fluid. Playback pauses at the dataset endpoint. Unlock to reframe.'
+        : 'Fix the current camera, scale, radar, ISO and dust density while linear time advances. Unlock to reframe. Time speed and scrubbing remain available.';
+      find('.touch-hint strong').textContent = state.referenceView ? 'Reference view · framing locked' : 'Pinch to change radar distance';
+      find('.touch-hint span').textContent = state.referenceView ? 'Settings → Unlock reference view to reframe' : 'Drag to look';
+      // Keep time speed, pause and scrubbing usable, but prevent settings from
+      // changing the reference image's viewing or tracer conditions.
+      for (const input of root.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+        '#optics-controls input, #ship-controls input, #dust-controls input, #dust-controls select')) {
+        if (state.referenceView) input.disabled = true;
+        else if (input === colorSelect) input.disabled = false;
+      }
+      timeModeSelect.disabled = state.referenceView;
+      if (state.referenceView) {
+        find<HTMLInputElement>('#control-independentDust').disabled = true;
+        find<HTMLInputElement>('#control-dustSpeed').disabled = true;
+      }
+      find<HTMLButtonElement>('#reset-view').disabled = state.referenceView;
       find<HTMLButtonElement>('#screensaver').disabled = !hasFlow() || !state.isCore;
       introCard.hidden = !state.introActive;
       find('#intro-look-prompt').hidden = !state.introActive || state.hudActive || state.pointerLocked;
@@ -370,7 +407,7 @@ export function createUI(container: HTMLElement, state: AppState, actions: Actio
         find('#hud-iso').textContent = Math.round(100 * 2 ** state.exposure).toLocaleString();
         find('#hud-fov').textContent = `${Math.round(state.fov)}°`;
         find('#hud-time').textContent = state.time.toFixed(4);
-        find('#hud-mode').textContent = state.introActive ? 'Movie · resets each clip' : 'Manual flight';
+        find('#hud-mode').textContent = state.referenceView ? 'Reference · framing locked' : state.introActive ? 'Movie · resets each clip' : 'Manual flight';
         find('#hud-space-action').textContent = state.introActive ? 'Take control' : 'Play / pause';
       }
       replayIntro.hidden = state.introActive || !state.isCore;

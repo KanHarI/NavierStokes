@@ -1,4 +1,4 @@
-"""Diagnostic axis data for Appendix B.1, separate from global matching.
+"""Axis data for Appendix B.1, with selectable finite outer-schedule pressure.
 
 The analytic pressure family obeys the local sign hypotheses in B.1. Its
 coefficient is not obtained from the complete Appendix A outer schedule.
@@ -9,6 +9,10 @@ or the annular gluing assumptions of the source construction.
 from dataclasses import dataclass
 from functools import lru_cache
 import math
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from outer_schedule import OuterScheduleParameters
 
 
 @dataclass(frozen=True)
@@ -19,9 +23,10 @@ class AxisParameters:
     sigma: float = .5
     lambda_: float = 16.0
     axis_amplitude: float = .25
+    outer_schedule: 'OuterScheduleParameters | None' = None
 
     def __post_init__(self):
-        if not all(math.isfinite(value) for value in self.__dict__.values()):
+        if not all(math.isfinite(value) for name, value in self.__dict__.items() if name != 'outer_schedule'):
             raise ValueError("Axis parameters must be finite")
         if not 0 < self.h < .01 or not 0 < self.j0 <= .05:
             raise ValueError("Require 0<h<.01 and 0<j0<=.05")
@@ -29,17 +34,34 @@ class AxisParameters:
             raise ValueError("Pressure scale, sigma, and axis amplitude must be positive")
         if self.lambda_ < 1:
             raise ValueError("Require lambda_>=1")
+        if self.outer_schedule is not None and self.outer_schedule.h != self.h:
+            raise ValueError("Core and outer pressure schedule must use the same h")
 
 
 DEFAULT_PARAMETERS = AxisParameters()
 
 
+def _axis_transport(eta, parameters):
+    return (.5-parameters.h)*eta+(1-eta*eta)*(4*eta+parameters.j0)
+
+
+def _axis_zeta(eta, parameters):
+    transport = _axis_transport(eta, parameters)
+    return -(1-2*parameters.h*eta*eta)*transport/(transport*transport+parameters.sigma**2)
+
+
 def pressure_datum(eta, parameters=DEFAULT_PARAMETERS):
-    """Pi_0=-P/(1+eta²)²; P is a coefficient, not the paper's P_* ."""
+    """Selected pressure: complete finite schedule, or diagnostic -P/(1+eta²)²."""
+    if parameters.outer_schedule is not None:
+        from outer_schedule import pressure_datum as scheduled_pressure
+        return scheduled_pressure(eta, parameters.outer_schedule)
     return -parameters.pressure_scale / (1 + eta * eta) ** 2
 
 
 def pressure_datum_derivative(eta, parameters=DEFAULT_PARAMETERS):
+    if parameters.outer_schedule is not None:
+        from outer_schedule import pressure_derivative
+        return pressure_derivative(eta, parameters.outer_schedule)
     return 4 * parameters.pressure_scale * eta / (1 + eta * eta) ** 3
 
 
@@ -47,6 +69,9 @@ def pressure_taylor(eta, order, parameters=DEFAULT_PARAMETERS):
     """Exact rational recurrence for coefficients of Pi_0(eta+epsilon)."""
     if not isinstance(order, int) or order < 0:
         raise ValueError("Taylor order must be a nonnegative integer")
+    if parameters.outer_schedule is not None:
+        from outer_schedule import pressure_taylor as scheduled_taylor
+        return scheduled_taylor(eta, order, parameters.outer_schedule)
     a = 1 + eta * eta
     denominator = (a*a, 4*a*eta, 2+6*eta*eta, 4*eta, 1.)
     coefficients = [-parameters.pressure_scale / denominator[0]]
@@ -90,7 +115,7 @@ def _bisect(function, low, high):
 @lru_cache(maxsize=64)
 def axis_peak_eta(parameters=DEFAULT_PARAMETERS):
     """Unique zero of H_* in [-1,1], where the positive g is maximal."""
-    return _bisect(lambda eta: axis_quantities(eta, parameters)["H"], -1., 0.)
+    return _bisect(lambda eta: _axis_transport(eta, parameters), -1., 0.)
 
 
 def _integral(function, low, high, tolerance=2e-13):
@@ -125,8 +150,15 @@ def axis_log_amplitude(eta, parameters=DEFAULT_PARAMETERS):
     """
     if not math.isfinite(eta) or not -1 <= eta <= 1:
         raise ValueError("Axis amplitude is available for finite eta in [-1,1]")
-    integral = _integral(lambda e: axis_quantities(e, parameters)["zeta"],
-                         axis_peak_eta(parameters), eta)
+    peak = axis_peak_eta(parameters)
+    # Resolve the narrow rational layer in zeta before adaptive quadrature.
+    # In sinh coordinates its width stays O(1), including at eta=+/-1;
+    # the old physical-coordinate recursion exhausted its depth for small sigma.
+    h_derivative = 4.5-parameters.h-12*peak*peak-2*parameters.j0*peak
+    width = parameters.sigma / abs(h_derivative)
+    upper = math.asinh((eta-peak)/width)
+    integral = _integral(lambda s: _axis_zeta(peak+width*math.sinh(s), parameters)
+                         *width*math.cosh(s), 0., upper)
     return math.log(parameters.axis_amplitude)+parameters.lambda_*integral
 
 
@@ -165,7 +197,9 @@ def parameter_diagnostics(parameters=DEFAULT_PARAMETERS, samples=4001):
                 near_zero.append(axis_quantities(boundary, parameters)["chi"])
     minimum_chi = min(near_zero) if near_zero else None
     return {
-        "scope": "local analytic axis datum; outer pressure and moments unmatched",
+        "scope": ("finite outer-schedule pressure; global moments/cone uncertified"
+                  if parameters.outer_schedule is not None else
+                  "local analytic axis datum; outer pressure and moments unmatched"),
         "h_root_eta": peak,
         "Z_at_H_zero": peak_data["Z"],
         "minimum_negative_W_sampled": min(-q["W"] for q in data),

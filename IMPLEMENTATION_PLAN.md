@@ -10,6 +10,16 @@ The user has authorized writing these documents, creating a public GitHub reposi
 
 ### Current checkpoint
 
+The September 10 mathematical pass added a finite Appendix A azimuthal
+pressure schedule, its analytic core boundary jets, sampled real-axis
+continuation gates, and the five-moment small-correction system from A.2/A.3.
+One normalized-pressure local candidate passes the sampled gates and has a
+1.35 MB adaptive logarithmic-swirl table. Full outer closures, annular stress
+conditions, and higher corrections remain open; the default field is retained.
+See docs/core-candidates.md, docs/outer-schedule.md, and docs/radial-moments.md.
+An explicit reference viewing mode fixes framing and exposure while time
+advances, separating fluid changes from the procedural camera.
+
 A procedural cinematic arrival generates fresh 5–30-second linear-time approaches, replacing the fixed four-view sequence and progressively slower repeats. Camera angles, roll, orbit, magnification, perspective, field of view, focus, radar depth, bokeh, ISO, and particle density vary within coupled framing bounds. Each clip reaches the finite endpoint and fades to black before restarting. The final rendering is monochrome; parallax, focus, and normalized flow-aligned motion exposure provide depth. A persistent Hide controls / Show controls button clears the cockpit without stopping playback. Click to look around enables mouse steering and relative WASD and Up/Down arrow movement, QE roll, and ZX radar range during playback; each new clip resets these adjustments. Space takes over manual flight. A game HUD replaces descriptive text after clicking to look. Escape releases capture and returns to procedural viewing in one press. At each endpoint the completed image fades without further particle updates, followed by a black frame before reset. This presentation does not change the represented fluid equations or complete the remaining scientific work.
 
 The default view now adds continuous surroundings to the computed core: Appendix B.22 reference continuation, a streamfunction join to the heat exterior, a matched radial pressure moment, and smooth physical localization to stationary fluid. See docs/extended-flow.md for the equations and remaining source conditions. The renderer reconstructs both meridional components from a common bicubic primitive, keeps dust in stationary fluid, and removes the old shrinking data crop from this default mode. The two original isolated checkpoints remain selectable.

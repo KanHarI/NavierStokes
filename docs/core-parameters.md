@@ -2,9 +2,13 @@
 
 The local solver uses the coupled equations (4.7), (4.13), and (B.15) from
 [the source paper](https://cdn.openai.com/pdf/32d9f210-8b73-45e0-91bc-82a30aef8a9a/navier-stokes.pdf).
-It does **not** yet use the pressure obtained from the complete Appendix A
-outer schedule. A successful local computation is not a globally matched
-leading vortex or the full smooth-forcing construction.
+The displayed default retains the diagnostic rational pressure below. The
+solver can now also use the complete pressure integral of a finite Appendix A
+azimuthal schedule, including analytic Taylor coefficients; see
+[outer-schedule.md](outer-schedule.md). That finite schedule does not complete
+the outer moment closures or its hierarchy of parameter bounds. A successful
+local computation is not a globally matched leading vortex or the full
+smooth-forcing construction.
 
 ## What the source prescribes
 
@@ -92,6 +96,12 @@ pressure integral, its rational Taylor coefficients, the amplitude's
 logarithmic derivative, and a root witnessing the default B.2 failure.
 
 ## What is still required for a matched construction
+
+The [candidate investigation](core-candidates.md) now provides a sampled
+local candidate passing the real-axis B.2/B.17/B.19 checks and an adaptive
+offline table. The [five-moment corrector](radial-moments.md) solves small
+pointwise annular discrepancies. These are building blocks for the remaining
+assembly below; they have not replaced the public field.
 
 1. Instantiate the actual outer amplitude schedules in log coordinates.
 2. Compute their entire pressure datum and the five cumulative radial moments.
