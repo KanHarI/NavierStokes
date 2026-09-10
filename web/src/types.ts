@@ -9,9 +9,6 @@ export interface AppState {
   screensaver: boolean;
   touchControls: boolean;
   touchSettings: boolean;
-  gyroActive: boolean;
-  gyroPending: boolean;
-  gyroStatus: string;
   introShot: number;
   introProgress: number;
   introDuration: number;
@@ -66,7 +63,6 @@ export interface Actions {
   startScreensaver(): void;
   enterFlight(): void;
   returnToAuto(): void;
-  toggleGyro(): void;
 }
 
 export function initialState(): AppState {
@@ -77,7 +73,6 @@ export function initialState(): AppState {
     isCore, fieldKind,
     introActive: false, hudActive: false, screensaver: false,
     touchControls: matchMedia('(pointer: coarse)').matches, touchSettings: false,
-    gyroActive: false, gyroPending: false, gyroStatus: '',
     introShot: 0, introProgress: 0, introDuration: 0, introTitle: '', introCaption: '',
     introSpeedRatio: 1, introScaleRatio: 1,
     ship: { position: isCore ? [0, -.6, .15] : [0, -2.4, 0.6], orientation: [0.627,-0.0,0.0,0.779], scale: isCore ? .25 : 1 },

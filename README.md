@@ -16,7 +16,7 @@ Click **Look around** to steer inside the movie. A compact HUD reveals radar ran
 
 Choose **Screensaver** for fullscreen viewing without text. Escape exits; on a phone, tap the screen. **Hide controls / Hide HUD** also clears the overlays without interrupting playback. Reduced-motion preferences and `?intro=0` start in the paused explorer.
 
-On mobile, **drag to look** and **pinch to change radar distance**. Optional **Gyro** adds calibrated phone-tilt steering after permission; drag remains available if sensors are unavailable. **Settings** opens the control sheet, and **Auto** returns to the movies.
+On mobile, **drag to look** and **pinch to change radar distance**. **Settings** opens the control sheet, and **Auto** returns to the movies.
 
 ## Controls
 
@@ -77,6 +77,6 @@ npm run data:core          # Isolated local core
 npm run data:preview       # Isolated heat exterior
 ```
 
-The site is static and deploys from `main` to GitHub Pages. A drifting snow screen covers data loading and GPU preparation. If the browser restores a lost graphics context, the viewer attempts to rebuild from cached data, preserving a manual view or restarting the automatic clip; Gyro switches off. Phone rendering uses smaller particle and image budgets. Touch and sensor behavior have automated coverage, including synthetic orientation events; physical-device gyro feel still needs evaluation.
+The site is static and deploys from `main` to GitHub Pages. A drifting snow screen covers data loading and GPU preparation. If the browser restores a lost graphics context, the viewer attempts to rebuild from cached data, preserving a manual view or restarting the automatic clip. Phone rendering uses smaller particle and image budgets. Touch gestures and graphics recovery have automated browser coverage.
 
 Further details: [cinematic playback](docs/validation/intro.md), [shell and bokeh](docs/validation/shell.md), and [perspective calibration](docs/validation/projection.md).

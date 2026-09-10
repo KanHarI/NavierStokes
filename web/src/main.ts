@@ -6,21 +6,18 @@ import { loadField, sampleVelocity, type FieldData } from './field';
 import { advanceTime } from './time';
 import { Renderer } from './renderer';
 import { createIntroDirector, INTRO_FADE_SECONDS } from './intro';
-import { createGyroSteering } from './gyro';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#space')!;
 const container = document.querySelector<HTMLElement>('#interface')!;
 canvas.tabIndex = -1;
 const state = initialState();
 const navigation = createNavigation(canvas, state);
-const gyro = createGyroSteering();
 let renderer: Renderer | undefined;
 let cachedField: FieldData | undefined;
 let graphicsLost = false;
 let graphicsRecoveries = 0;
 let resumeIntroAfterRecovery = false;
 let recoveryHUD = false;
-let gyroRequest = 0;
 let frameID = 0;
 let disposed = false;
 let lastFrame = performance.now();
@@ -55,7 +52,6 @@ function stopIntro(updateUI = true) {
 function startIntro() {
   if (!renderer || !state.flowAvailable || !state.isCore) return;
   navigation.resetIntroLook();
-  gyro.recalibrate();
   state.hudActive = false;
   state.touchSettings = false;
   state.introActive = true; state.playing = true;
@@ -100,33 +96,6 @@ function lookAround() {
 
 function enterFlight() { stopIntro(); lookAround(); }
 
-async function toggleGyro() {
-  if (state.gyroPending || graphicsLost) return;
-  if (state.gyroActive) { gyro.disable(); state.gyroActive = false; }
-  else {
-    const request = ++gyroRequest;
-    state.gyroPending = true;
-    state.gyroStatus = 'Requesting Gyro access…'; ui.update();
-    const enabled = await gyro.enable();
-    if (disposed || request !== gyroRequest) return;
-    state.gyroActive = enabled;
-    state.gyroPending = false;
-  }
-  // A native permission sheet can suspend RAF without changing visibility.
-  // Permission time belongs to the paused viewer, never a catch-up step.
-  lastFrame = performance.now();
-  state.gyroStatus = gyro.status(); ui.update();
-}
-
-function updateNavigation(dt: number) {
-  if (state.gyroActive && state.hudActive && !state.touchSettings && !state.screensaver) {
-    const delta = gyro.update(dt);
-    if (delta) navigation.rotateLook(delta);
-    state.gyroStatus = gyro.status();
-  } else gyro.recalibrate();
-  navigation.update(dt);
-}
-
 function startScreensaver() {
   if (!state.flowAvailable || !state.isCore) return;
   if (!state.introActive) startIntro();
@@ -152,7 +121,7 @@ const ui = createUI(container, state, {
     state.time = Math.max(state.timeMin, Math.min(state.timeMax, time));
     state.playing = false; reseed();
   },
-  enterFlight, lookAround, startScreensaver, returnToAuto, toggleGyro,
+  enterFlight, lookAround, startScreensaver, returnToAuto,
 });
 
 const debug = { state, renderer, startup, sampleVelocity: (p: number[], time = state.time) => renderer ? sampleVelocity(renderer.field, p, time) : null };
@@ -203,10 +172,6 @@ function frame(now: number) {
   // counted again as elapsed fade time on the next frame.
   now = performance.now();
   const elapsed = (now - lastFrame) / 1000; lastFrame = now;
-  if (state.gyroPending) {
-    frameID = requestAnimationFrame(frame);
-    return;
-  }
   const dt = document.hidden ? 0 : Math.min(.05, Math.max(0, elapsed));
   if (elapsed > 0 && elapsed < 1) state.fps = state.fps ? state.fps * .9 + .1 / elapsed : 1 / elapsed;
   const clockElapsed = document.hidden ? 0 : Math.max(0, elapsed);
@@ -240,14 +205,14 @@ function frame(now: number) {
     if (introAtEndpoint) shot.time = state.timeMax;
     const segment = shot.shot, restart = segment !== introSegment;
     timeDelta = restart ? 0 : Math.max(0, shot.time-state.time); transportDelta = timeDelta;
-    if (restart) { renderer.reseed(); navigation.resetIntroLook(); gyro.recalibrate(); introSegment = segment; state.density = shot.density; }
+    if (restart) { renderer.reseed(); navigation.resetIntroLook(); introSegment = segment; state.density = shot.density; }
     state.time = shot.time; state.playing = shot.time < state.timeMax;
     state.introShot = shot.shot; state.introProgress = shot.phase;
     state.introDuration = shot.duration;
     state.introTitle = shot.title; state.introCaption = shot.caption;
     state.introScaleRatio = Math.sqrt((1-shot.time)/(1-state.timeMin));
     state.introSpeedRatio = ((1-state.timeMin)/(1-shot.time))**(.5+renderer.field.manifest.model.h);
-    updateNavigation(dt);
+    navigation.update(dt);
     const pose = navigation.applyIntroPose({ position: shot.position, orientation: shot.orientation, scale: shot.scale });
     state.ship.position = pose.position; state.ship.orientation = pose.orientation; state.ship.scale = pose.scale;
     const optics = navigation.applyIntroOptics(shot);
@@ -257,7 +222,7 @@ function frame(now: number) {
     state.playbackSpeed = shot.playbackSpeed;
     canvas.style.opacity = String(shot.opacity);
   } else {
-    updateNavigation(dt);
+    navigation.update(dt);
     const nextTime = state.playing
     ? advanceTime(state.time, state.timeMax, clockElapsed, state.playbackSpeed, state.timeMode)
     : state.time;
@@ -303,8 +268,6 @@ const onContextLost = (event: Event) => {
   graphicsLost = true; cancelAnimationFrame(frameID);
   resumeIntroAfterRecovery = state.introActive; recoveryHUD = state.hudActive;
   cachedField = renderer?.field ?? cachedField;
-  gyroRequest++; gyro.disable(); state.gyroActive = false; state.gyroPending = false;
-  state.gyroStatus = 'Gyro is off.';
   renderer?.dispose(); renderer = undefined; debug.renderer = undefined;
   state.playing = false; state.loading = true; state.flowAvailable = false;
   reseedAt = -1; firstFrameReady = false; startup.firstFrameReady = 0;
@@ -324,12 +287,12 @@ const onContextRestored = () => {
     renderer = new Renderer(canvas, state, cachedField); debug.renderer = renderer;
     graphicsLost = false; startup.rendererReady = performance.now();
     state.loading = false; state.flowAvailable = true; state.playing = false;
-    gyro.recalibrate(); renderer.reseed();
+    renderer.reseed();
     // Lost GPU particle buffers cannot retain their identities. Restart an
     // automatic clip cleanly; manual exploration keeps its pose, time and optics.
     if (resumeIntroAfterRecovery) { startIntro(); state.hudActive = recoveryHUD; }
     else { canvas.style.transition = 'none'; canvas.style.opacity = '1'; }
-    state.status = 'Graphics restored. Gyro is off.';
+    state.status = 'Graphics restored.';
     ui.update(); lastFrame = performance.now(); frameID = requestAnimationFrame(frame);
   } catch (error) {
     renderer?.dispose(); renderer = undefined; debug.renderer = undefined;
@@ -397,7 +360,7 @@ document.addEventListener('click', onTouchClick, true);
 void start();
 
 if (import.meta.hot) import.meta.hot.dispose(() => {
-  disposed = true; cancelAnimationFrame(frameID); renderer?.dispose(); navigation.dispose(); gyro.dispose(); ui.dispose();
+  disposed = true; cancelAnimationFrame(frameID); renderer?.dispose(); navigation.dispose(); ui.dispose();
   canvas.removeEventListener('webglcontextlost', onContextLost);
   canvas.removeEventListener('webglcontextrestored', onContextRestored); document.removeEventListener('visibilitychange', onVisibility);
   document.removeEventListener('pointerdown', onManualInput, true); document.removeEventListener('input', onManualInput, true);

@@ -25,6 +25,8 @@ test('real touch gestures steer the movie, adjust radar, and expose complete man
     return s.touchControls && s.hudActive && s.introActive && !s.pointerLocked && !document.pointerLockElement;
   });
   await expect(page.locator('.touch-toolbar')).toBeVisible();
+  await expect(page.locator('#touch-gyro')).toHaveCount(0);
+  await expect(page.locator('.touch-hint')).toContainText('Drag to look');
   const session = await page.context().newCDPSession(page);
   const before = await page.evaluate(() => {
     const s = (window as any).__observatory.state;
@@ -126,7 +128,7 @@ test('touch layout fits portrait and short landscape with accessible action size
     await expectTouchBox(page, '#intro-card', viewport);
     await page.locator('#explore-flow').tap();
     await expectTouchBox(page, '.hud-instruments', viewport);
-    for (const id of ['#touch-auto', '#touch-manual', '#touch-settings', '#touch-gyro']) await expectTouchBox(page, id, viewport, true);
+    for (const id of ['#touch-auto', '#touch-manual', '#touch-settings']) await expectTouchBox(page, id, viewport, true);
     await page.screenshot({ path: info.outputPath(`mobile-hud-${viewport.width}-${viewport.height}.png`) });
     await page.locator('#touch-settings').tap();
     await expectTouchBox(page, '#flight-controls', viewport);
